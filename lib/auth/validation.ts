@@ -11,3 +11,9 @@ export function validatePassword(password: string): string | null {
   if (password.length < PASSWORD_MIN_LENGTH) return `Password must be at least ${PASSWORD_MIN_LENGTH} characters.`;
   return null;
 }
+
+export function validatePhone(phone: string): string | null {
+  if (!phone.trim()) return "Please enter your mobile number.";
+  if (!/^[6-9]\d{9}$/.test(phone)) return "Please enter a valid 10 digit Indian mobile number.";
+  return null;
+}

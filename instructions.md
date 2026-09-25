@@ -2890,3 +2890,497 @@ After implementation, report:
 Do not claim that Google/Facebook authentication is functional unless it is actually connected to a real authentication provider.
 
 Build the UI and architecture now; keep the implementation honest about what is and isn’t connected.
+
+I want you to create the SpaceYaar splash screen shown in the reference image I provided.
+
+IMPORTANT:
+Treat the provided reference image as the visual source of truth. Reproduce the UI as closely as possible in terms of layout, proportions, colors, typography, positioning, imagery, spacing, and overall visual composition. Do not create a generic splash screen.
+
+APP NAME:
+SpaceYaar
+
+BRAND:
+SpaceYaar is a modern space/storage rental marketplace.
+
+The visual theme is WHITE + RED/ORANGE, with the splash screen using a strong red-to-orange gradient.
+
+==================================================
+SPLASH SCREEN
+==================================================
+
+Create a full-screen responsive splash screen.
+
+The design should have:
+
+1. RED/ORANGE GRADIENT BACKGROUND
+
+Use a rich warm gradient similar to the reference:
+
+- Deep/bright SpaceYaar red at the top
+- Transition gradually into a vivid orange toward the lower portion
+- Subtle variation in the gradient so the background does not look flat
+- The gradient should cover the entire viewport
+
+The background should feel energetic, premium and modern.
+
+Do NOT use a simple single-color red background.
+
+The gradient should be implemented using CSS rather than baked into the UI.
+
+==================================================
+2. TOP BRANDING
+==================================================
+
+Near the upper portion of the screen, display the SpaceYaar logo and wordmark.
+
+Logo:
+
+- White rounded-square container
+- Rounded corners
+- SpaceYaar logo/mark inside
+- Maintain the proportions shown in the reference
+
+Next to the logo:
+
+SPACEYAAR
+
+Use a clean modern sans-serif font.
+
+The wordmark should be white.
+
+The logo + wordmark should be horizontally aligned and centered.
+
+Do not use "Spaceyar".
+
+The correct product name is:
+
+SpaceYaar
+
+Pay attention to the capitalization.
+
+==================================================
+3. MAIN TAGLINE
+==================================================
+
+Place the main tagline approximately in the middle portion of the screen.
+
+Text:
+
+"Godam aur Storage
+bookings krein"
+
+Use exactly this wording for now.
+
+The text should:
+
+- Be white
+- Be large
+- Be bold/semibold
+- Be centered
+- Have comfortable line height
+- Use two lines on mobile
+- Maintain the same visual hierarchy as the reference
+
+Do not make the text too small.
+
+It should be one of the primary visual elements of the splash screen.
+
+==================================================
+4. ANIMATED FEATURE LIST
+==================================================
+
+Below the tagline, create three feature items:
+
+✓ Verified Space
+
+◈ Secured Payments
+
+ϟ Instant Bookings
+
+Use clean modern outline icons.
+
+The exact icons can be selected using an appropriate icon library already present in the project. If an icon library isn't installed, use a lightweight appropriate solution rather than introducing a large unnecessary dependency.
+
+Each item should contain:
+
+ICON + TEXT
+
+The three items should be vertically stacked and centered.
+
+Example:
+
+[verified icon]   Verified Space
+
+[shield icon]     Secured Payments
+
+[lightning icon]  Instant Bookings
+
+Text should be white.
+
+Icons should be white.
+
+==================================================
+5. FEATURE ANIMATIONS
+==================================================
+
+This is VERY IMPORTANT.
+
+The three feature items must be animated.
+
+Do not show all three simultaneously from the beginning.
+
+Create a sequential entrance animation:
+
+Step 1:
+
+Verified Space fades/slides in.
+
+Step 2:
+
+After a short delay:
+
+Secured Payments fades/slides in.
+
+Step 3:
+
+After another short delay:
+
+Instant Bookings fades/slides in.
+
+Use Motion for React if it is already being used in the project.
+
+The animation should feel polished and premium.
+
+Suggested behavior:
+
+- opacity: 0 → 1
+- translateY: 15–25px → 0
+- subtle scale from approximately 0.96 → 1
+
+Use smooth easing/spring animation.
+
+The animations should be fast enough that the splash screen never feels slow.
+
+==================================================
+6. FEATURE ICON ANIMATION
+==================================================
+
+Give each icon a subtle animation when it appears.
+
+For example:
+
+- Fade in
+- Small scale-up
+- Slight spring effect
+
+Do not make the icons bounce excessively.
+
+The animation should feel like a professional production application.
+
+==================================================
+7. BOTTOM ILLUSTRATION
+==================================================
+
+The lower portion of the splash screen should contain a large illustration similar in composition to the reference.
+
+The illustration should communicate:
+
+- Storage/godam
+- People interacting
+- Storage boxes
+- Delivery/logistics
+- A warehouse
+- Indian context
+
+The illustration should occupy a large portion of the lower screen.
+
+The image should blend naturally into the orange/red background.
+
+IMPORTANT:
+
+Do not create an arbitrary stock-photo style image.
+
+The visual should maintain the illustrated, slightly stylized appearance of the reference.
+
+If the reference image is available to the coding environment, use it as the visual reference.
+
+However, do not hard-code the reference screenshot itself as the final UI.
+
+The illustration should be treated as an actual splash-screen visual asset.
+
+==================================================
+8. IMAGE POSITIONING
+==================================================
+
+The illustration should:
+
+- Extend toward the bottom edge
+- Be horizontally centered
+- Occupy approximately the lower 35–45% of the mobile screen
+- Scale proportionally
+- Never stretch/distort
+- Never create horizontal scrolling
+
+On desktop, adapt the composition rather than simply stretching the mobile screenshot.
+
+==================================================
+9. MOBILE DESIGN
+==================================================
+
+The primary design target is mobile.
+
+Optimize for:
+
+- iPhone
+- Android phones
+- Safari mobile
+- Chrome mobile
+
+Support approximately:
+
+320px–480px width.
+
+The design should fill the viewport.
+
+Account for:
+
+- Safe areas
+- Dynamic browser bars
+- Notches
+- Home indicators
+
+Use appropriate viewport units and safe-area handling.
+
+Do not allow content to be hidden behind the iPhone home indicator.
+
+==================================================
+10. DESKTOP RESPONSIVENESS
+==================================================
+
+This is a web application, so the splash screen must also work on desktop.
+
+For desktop:
+
+- Keep the same visual identity.
+- Do not simply stretch the mobile design to full width.
+- Maintain a controlled composition.
+- Keep the branding and tagline visually balanced.
+- Scale the illustration appropriately.
+- Maintain the red/orange gradient.
+
+The result should look intentional on both mobile and desktop.
+
+==================================================
+11. SPLASH SCREEN TIMING
+==================================================
+
+The splash screen should be short.
+
+Target approximately:
+
+2.5–3.5 seconds.
+
+During this period:
+
+1. Background appears.
+2. SpaceYaar logo/wordmark animates in.
+3. Tagline appears.
+4. Verified Space appears.
+5. Secured Payments appears.
+6. Instant Bookings appears.
+7. Splash transitions smoothly to onboarding.
+
+Do not make the user wait unnecessarily.
+
+==================================================
+12. PAGE TRANSITION
+==================================================
+
+After the splash animation completes:
+
+Navigate to the existing onboarding flow.
+
+Use a smooth transition such as:
+
+- Fade
+- Slight upward movement
+- Crossfade
+
+Do not use a dramatic page transition.
+
+The experience should feel like one continuous application.
+
+==================================================
+13. DESIGN TOKENS
+==================================================
+
+Do not scatter random colors throughout the component.
+
+Use the existing SpaceYaar design-token system if one exists.
+
+If it doesn't exist, establish reusable tokens for:
+
+- Brand red
+- Brand orange
+- White
+- Primary text
+- Gradient
+- Border radius
+- Animation durations
+- Spacing
+
+The red/orange gradient should be defined centrally.
+
+==================================================
+14. COMPONENT ARCHITECTURE
+==================================================
+
+Do not put everything into one huge component.
+
+Create reusable components where appropriate.
+
+For example:
+
+SplashScreen
+├── SpaceYaarBrand
+├── SplashTagline
+├── SplashFeatures
+│   ├── FeatureItem
+│   ├── FeatureItem
+│   └── FeatureItem
+└── SplashIllustration
+
+The exact architecture can follow the existing project conventions.
+
+Do not unnecessarily create dozens of files.
+
+==================================================
+15. ANIMATION ARCHITECTURE
+==================================================
+
+Keep animation logic clean.
+
+Do not use arbitrary setTimeout chains if Motion/React animation sequencing can handle it cleanly.
+
+The animation should:
+
+- Run once when the splash mounts.
+- Clean up correctly if the component unmounts.
+- Not cause memory leaks.
+- Not create multiple navigation calls.
+- Respect reduced-motion preferences where practical.
+
+If the user has prefers-reduced-motion enabled, reduce or disable non-essential animation.
+
+==================================================
+16. IMPORTANT VISUAL DETAILS
+==================================================
+
+Pay close attention to:
+
+- Exact visual hierarchy
+- Logo size
+- Logo position
+- Wordmark size
+- Tagline position
+- Tagline line height
+- Feature spacing
+- Icon size
+- Illustration scale
+- Gradient direction
+- Gradient intensity
+- Bottom composition
+- Overall whitespace
+
+The result should feel very close to the reference image.
+
+Do NOT produce a generic SaaS landing page.
+
+This is a splash screen for a consumer rental/storage marketplace.
+
+==================================================
+17. DO NOT CHANGE OTHER SCREENS
+==================================================
+
+For this task, primarily modify/create the Splash Screen.
+
+Do not redesign:
+
+- Login
+- Signup
+- Role Selection
+- Owner Home
+- Renter Home
+
+unless a small routing change is required to connect the splash screen correctly.
+
+Preserve the existing work.
+
+==================================================
+18. TECHNICAL REQUIREMENTS
+==================================================
+
+Use the existing project technology and architecture.
+
+If the project is already using:
+
+- Next.js
+- TypeScript
+- React
+- Tailwind CSS
+- Motion
+
+continue using them.
+
+Do not introduce a completely different framework.
+
+Do not install unnecessary dependencies.
+
+Use responsive CSS.
+
+Use semantic HTML where appropriate.
+
+Ensure the implementation has:
+
+- No TypeScript errors
+- No ESLint errors
+- No console errors
+- No horizontal overflow
+- No broken images
+- No layout shift
+- Proper mobile responsiveness
+
+==================================================
+19. FINAL CHECK
+
+After implementation, run the application and visually inspect the splash screen.
+
+Compare it against the provided reference image.
+
+Pay particular attention to:
+
+1. Gradient
+2. Branding
+3. Tagline
+4. Feature list
+5. Animation sequence
+6. Illustration positioning
+7. Mobile proportions
+8. Desktop responsiveness
+
+If something looks visually wrong, correct it before finishing.
+
+==================================================
+20. IMPORTANT FINAL INSTRUCTION
+
+Do not simply explain how to build this.
+
+Actually implement the splash screen in the repository.
+
+Use the provided reference image as the primary visual reference.
+
+The final result should look like a polished production-quality **SpaceYaar** splash screen, with the red/orange gradient, white branding, Hindi-English tagline, animated feature benefits, and illustrated storage/godam scene.
+
+
+
+

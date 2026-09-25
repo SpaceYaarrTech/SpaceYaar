@@ -1,15 +1,15 @@
 "use client";
 
 import { useState } from "react";
+import { useRouter } from "next/navigation";
 import { motion } from "motion/react";
-import { SpaceYaarLogo } from "@/components/branding/SpaceYaarLogo";
 import { PrimaryButton } from "@/components/ui/PrimaryButton";
 import { ROLE_OPTIONS } from "@/lib/roles/role-config";
 import { setSelectedRole } from "@/lib/roles/role-storage";
 import type { UserRole } from "@/types/roles";
-import { RoleIcon } from "./RoleIcon";
 
 export function RoleSelection() {
+  const router = useRouter();
   const [selectedRole, setSelectedRoleState] = useState<UserRole | null>(null);
   const [isNavigating, setIsNavigating] = useState(false);
 
@@ -17,31 +17,83 @@ export function RoleSelection() {
     if (!selectedRole || isNavigating) return;
     setIsNavigating(true);
     setSelectedRole(selectedRole);
-    window.location.assign(`/${selectedRole}`);
+
+    if (selectedRole === "owner") {
+      router.replace("/owner");
+      return;
+    }
+
+    router.replace("/location");
   };
 
   return (
-    <main className="page-shell role-selection-page">
-      <header className="role-selection-header"><SpaceYaarLogo href="/login" /><span className="header-note">Choose your experience</span></header>
+    <main className="role-selection-page" aria-label="Choose your SpaceYaar experience">
+      <header className="role-selection-header">
+        <span className="header-note">SpaceYaar</span>
+        <span className="header-note">Your experience</span>
+      </header>
+
       <section className="role-selection-content" aria-labelledby="role-selection-title">
-        <motion.div className="role-selection-intro" initial={{ opacity: 0, y: 18 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: .55 }}>
-          <span className="eyebrow">One platform, your perspective</span>
-          <h1 id="role-selection-title" className="display-font">How will you use SpaceYaar?</h1>
-          <p>Choose your experience to get started.</p>
-        </motion.div>
+        <div className="role-selection-intro">
+          <span className="eyebrow">Role selection</span>
+          <h1 id="role-selection-title">Aap yahan kya karna chatein hain?</h1>
+          <p>Apna role choose karo baad mei change bhi kar sakte ho, no tension.</p>
+        </div>
+
         <div className="role-options" role="group" aria-label="Choose your SpaceYaar experience">
           {ROLE_OPTIONS.map(([role, config], index) => {
             const isSelected = selectedRole === role;
-            return <motion.button key={role} type="button" className={`role-card ${isSelected ? "selected" : ""}`} aria-pressed={isSelected} onClick={() => setSelectedRoleState(role)} initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: index * .1 + .15, duration: .5 }} whileTap={{ scale: .985 }}>
-              <span className="role-card-top"><span className="role-icon"><RoleIcon role={role} /></span><span className={`role-check ${isSelected ? "visible" : ""}`} aria-hidden="true">✓</span></span>
-              <span className="role-card-copy"><span className="role-card-label">{config.label}</span><span className="role-card-description">{config.description}</span></span>
-              <span className="role-card-arrow" aria-hidden="true">-&gt;</span>
-            </motion.button>;
+            const isRenter = role === "renter";
+
+            return (
+              <motion.button
+                key={role}
+                type="button"
+                className={`role-card ${isSelected ? "selected" : ""}`}
+                aria-pressed={isSelected}
+                onClick={() => setSelectedRoleState(role)}
+                initial={{ opacity: 0, y: 16 }}
+                animate={{ opacity: 1, y: 0 }}
+                transition={{ delay: index * 0.08 + 0.1, duration: 0.35 }}
+                whileTap={{ scale: 0.99 }}
+              >
+                <div className="role-card-top">
+                  <div className="role-icon" aria-hidden="true">
+                    {isRenter ? (
+                      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+                        <path d="M3 12.5 12 5l9 7.5" />
+                        <path d="M5 10.5V19h14v-8.5" />
+                        <path d="M9.5 19v-5.5h5V19" />
+                      </svg>
+                    ) : (
+                      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+                        <path d="M4 20V9.5L12 4l8 5.5V20" />
+                        <path d="M8 20v-6h8v6" />
+                        <path d="M10 9.5h4" />
+                      </svg>
+                    )}
+                  </div>
+                  <span className={`role-check ${isSelected ? "visible" : ""}`} aria-hidden="true">✓</span>
+                </div>
+
+                <div className="role-card-copy">
+                  <span className="role-card-label">{isRenter ? "I need a space" : "I have a space"}</span>
+                  <span className="role-card-description">{config.description}</span>
+                </div>
+
+                <span className="role-card-arrow" aria-hidden="true">→</span>
+              </motion.button>
+            );
           })}
         </div>
-        <div className="role-selection-action"><PrimaryButton type="button" disabled={!selectedRole || isNavigating} onClick={continueToRoleHome}>Continue <span aria-hidden="true" className="button-arrow">-&gt;</span></PrimaryButton><span className="role-selection-note">You can change your experience later.</span></div>
+
+        <div className="auth-compact-footer auth-compact-footer--right">
+          <PrimaryButton type="button" className="auth-next-button" disabled={!selectedRole || isNavigating} onClick={continueToRoleHome}>
+            <span>Continue</span>
+            <span aria-hidden="true">→</span>
+          </PrimaryButton>
+        </div>
       </section>
-      <footer className="role-selection-footer"><span>Space for what&apos;s next</span><span>02 / 02</span></footer>
     </main>
   );
 }

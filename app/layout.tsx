@@ -7,9 +7,12 @@ export const metadata: Metadata = {
 };
 
 export default function RootLayout({ children }: Readonly<{ children: React.ReactNode }>) {
+  console.log("[app/layout.tsx] rendering RootLayout");
   return (
     <html lang="en">
-      <body>{children}</body>
+      <body>
+        <div className="app-shell">{children}</div>
+      </body>
     </html>
   );
 }
