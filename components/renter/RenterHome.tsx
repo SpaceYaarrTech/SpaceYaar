@@ -3,7 +3,6 @@
 import Image from "next/image";
 import { useRouter } from "next/navigation";
 import { useEffect, useMemo, useState } from "react";
-import { PrimaryButton } from "@/components/ui/PrimaryButton";
 import {
   Clock3,
   Heart,
@@ -96,9 +95,9 @@ function ListingCard({ listing }: { listing: Listing }) {
 
         <div className="listing-footer">
           <span className="listing-price">{listing.pricePerDay}</span>
-          <PrimaryButton type="button" className="book-button" aria-label={`Book ${listing.title}`}>
+          <button type="button" className="book-button" aria-label={`Book ${listing.title}`}>
             Book
-          </PrimaryButton>
+          </button>
         </div>
       </div>
     </article>

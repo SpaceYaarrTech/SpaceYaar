@@ -16,12 +16,18 @@ export default function LocationMap({ center, selectedLocation, onMapReady }: Lo
   const containerRef = useRef<HTMLDivElement | null>(null);
   const mapRef = useRef<L.Map | null>(null);
   const markerRef = useRef<L.Marker | null>(null);
+  const initialCenterRef = useRef(center);
+  const onMapReadyRef = useRef(onMapReady);
+
+  useEffect(() => {
+    onMapReadyRef.current = onMapReady;
+  }, [onMapReady]);
 
   useEffect(() => {
     if (!containerRef.current || mapRef.current) return;
 
     const map = L.map(containerRef.current, {
-      center,
+      center: initialCenterRef.current,
       zoom: MAP_CONFIG.defaultZoom,
       zoomControl: false,
       attributionControl: true,
@@ -38,7 +44,7 @@ export default function LocationMap({ center, selectedLocation, onMapReady }: Lo
 
     map.attributionControl.setPosition("bottomright");
     mapRef.current = map;
-    onMapReady?.(map);
+    onMapReadyRef.current?.(map);
 
     window.requestAnimationFrame(() => {
       map.invalidateSize();
@@ -54,13 +60,7 @@ export default function LocationMap({ center, selectedLocation, onMapReady }: Lo
       mapRef.current = null;
       markerRef.current = null;
     };
-
-    return () => {
-      map.remove();
-      mapRef.current = null;
-      markerRef.current = null;
-    };
-  }, [center, onMapReady]);
+  }, []);
 
   useEffect(() => {
     if (!mapRef.current) return;

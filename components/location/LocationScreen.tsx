@@ -4,7 +4,6 @@ import { useMemo, useRef, useState } from "react";
 import dynamic from "next/dynamic";
 import { useRouter } from "next/navigation";
 import { Check, Mic, Minus, Plus, Search } from "lucide-react";
-import { PrimaryButton } from "@/components/ui/PrimaryButton";
 import { getSelectedRole } from "@/lib/roles/role-storage";
 import { searchLocation, type LocationSearchResult } from "@/lib/maps/geocoding";
 import { MAP_CONFIG } from "@/lib/maps/map-config";
@@ -70,7 +69,6 @@ export function LocationScreen() {
 
       const nextLocation = results[0];
       setSelectedLocation(nextLocation);
-      mapApiRef.current?.flyTo([nextLocation.latitude, nextLocation.longitude], 12, { duration: 0.6 });
     } catch {
       setError("Location nahi mili. Please try another area.");
     } finally {
@@ -97,7 +95,6 @@ export function LocationScreen() {
     };
 
     setSelectedLocation(nextLocation);
-    mapApiRef.current?.flyTo([matchedArea.lat, matchedArea.lng], 13, { duration: 0.6 });
   };
 
   const confirmLocation = () => {
@@ -194,9 +191,9 @@ export function LocationScreen() {
           </div>
         </div>
 
-        <PrimaryButton type="button" className="confirm-location-button" onClick={confirmLocation}>
+        <button type="button" className="confirm-location-button" onClick={confirmLocation}>
           Confirm Location
-        </PrimaryButton>
+        </button>
       </div>
     </main>
   );

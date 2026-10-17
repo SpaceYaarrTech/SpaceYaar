@@ -3,7 +3,6 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { motion } from "motion/react";
-import { PrimaryButton } from "@/components/ui/PrimaryButton";
 import { ROLE_OPTIONS } from "@/lib/roles/role-config";
 import { setSelectedRole } from "@/lib/roles/role-storage";
 import type { UserRole } from "@/types/roles";
@@ -88,10 +87,10 @@ export function RoleSelection() {
         </div>
 
         <div className="auth-compact-footer auth-compact-footer--right">
-          <PrimaryButton type="button" className="auth-next-button" disabled={!selectedRole || isNavigating} onClick={continueToRoleHome}>
+          <button type="button" className="auth-next-button" disabled={!selectedRole || isNavigating} onClick={continueToRoleHome}>
             <span>Continue</span>
             <span aria-hidden="true">→</span>
-          </PrimaryButton>
+          </button>
         </div>
       </section>
     </main>

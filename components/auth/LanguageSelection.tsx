@@ -2,8 +2,6 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
-import { PrimaryButton } from "@/components/ui/PrimaryButton";
-
 const STORAGE_KEY = "spaceyaar-selected-language";
 
 type LanguageOption = {
@@ -99,7 +97,7 @@ export function LanguageSelection() {
           </div>
 
           <div className="auth-compact-footer auth-compact-footer--right">
-            <PrimaryButton
+            <button
               type="button"
               className="auth-next-button"
               disabled={!selectedLanguage}
@@ -107,7 +105,7 @@ export function LanguageSelection() {
             >
               <span>Next</span>
               <span aria-hidden="true">→</span>
-            </PrimaryButton>
+            </button>
           </div>
 
           <div className="sr-only" aria-live="polite">

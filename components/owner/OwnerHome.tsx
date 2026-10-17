@@ -1,6 +1,7 @@
 "use client";
 
 import dynamic from "next/dynamic";
+import { useRouter } from "next/navigation";
 import { ArrowLeft, Check, FileText, ImageUp, Info, MapPin, Pencil, Star } from "lucide-react";
 import { useEffect, useMemo, useRef, useState, type ChangeEvent } from "react";
 import { PricingAvailabilityStep } from "@/components/owner/PricingAvailabilityStep";
@@ -32,6 +33,34 @@ const UTILITY_AMENITIES = ["Power Backup", "100% Uptime", "WiFi / LAN", "Ventila
 const LOGISTICS_AMENITIES = ["Loading Dock", "Forklift", "Racking System", "Freight Lift", "Truck Parking", "Weighbridge"];
 const PHOTO_OPTIONS = ["Main Entrance", "Interior View", "Exterior View", "Storage Area", "Loading Dock", "Others"];
 const DOCUMENT_OPTIONS = ["GST Certificate", "Aadhaar Card", "Pan Card", "Property Ownership", "Electricity Bill (Last Bill)"];
+const FLOOR_OPTIONS = ["Basement", "Ground Floor", "1st Floor", "2nd Floor", "3rd Floor", "4th Floor", "5th Floor", "5 or more"];
+const DIMENSION_UNITS = ["Ft", "Gaj", "Cm", "Inch", "Meter"] as const;
+const SPACE_AREA_UNITS = ["Sq. Feet", "Sq. Gaj", "Sq. Cm", "Sq. Inch", "Sq. Meter"] as const;
+const TEMPERATURE_UNITS = ["Celsius", "Fahrenheit"] as const;
+type DimensionUnit = (typeof DIMENSION_UNITS)[number];
+type SpaceAreaUnit = (typeof SPACE_AREA_UNITS)[number];
+type TemperatureUnit = (typeof TEMPERATURE_UNITS)[number];
+const FEET_PER_UNIT: Record<DimensionUnit, number> = {
+  Ft: 1,
+  Gaj: 3,
+  Cm: 1 / 30.48,
+  Inch: 1 / 12,
+  Meter: 3.28084,
+};
+const SQUARE_UNIT_LABELS: Record<DimensionUnit, string> = {
+  Ft: "sq ft",
+  Gaj: "sq gaj",
+  Cm: "sq cm",
+  Inch: "sq inch",
+  Meter: "sq m",
+};
+const SQ_FEET_PER_AREA_UNIT: Record<SpaceAreaUnit, number> = {
+  "Sq. Feet": 1,
+  "Sq. Gaj": 9,
+  "Sq. Cm": (1 / 30.48) ** 2,
+  "Sq. Inch": 1 / 144,
+  "Sq. Meter": 10.7639104167,
+};
 
 const totalSteps = 6;
 const accentPurple = "#6530F5";
@@ -113,21 +142,24 @@ function SpaceTypeIcon({ type }: { type: SpaceTypeOption["icon"] }) {
 }
 
 export function OwnerHome() {
+  const router = useRouter();
   const [currentStep, setCurrentStep] = useState(1);
   const [showReview, setShowReview] = useState(false);
 
   const [selectedSpaceType, setSelectedSpaceType] = useState("cold-storage");
-  const [selectedFloor, setSelectedFloor] = useState("Select");
+  const [selectedFloor, setSelectedFloor] = useState("");
+  const [floorError, setFloorError] = useState("");
   const [spaceArea, setSpaceArea] = useState("2,700");
-  const [spaceAreaUnit, setSpaceAreaUnit] = useState("Sq. Feet");
+  const [spaceAreaUnit, setSpaceAreaUnit] = useState<SpaceAreaUnit>("Sq. Feet");
   const [description, setDescription] = useState("");
   const [selectedUsages, setSelectedUsages] = useState<string[]>(["General"]);
 
   const [length, setLength] = useState("20");
   const [breadth, setBreadth] = useState("40");
   const [height, setHeight] = useState("");
-  const [dimensionUnit, setDimensionUnit] = useState("Ft");
+  const [dimensionUnit, setDimensionUnit] = useState<DimensionUnit>("Ft");
   const [temperature, setTemperature] = useState("");
+  const [temperatureUnit, setTemperatureUnit] = useState<TemperatureUnit>("Celsius");
   const [selectedLoadingFeatures, setSelectedLoadingFeatures] = useState<string[]>([
     "24/7 CCTV Camera",
     "Loading Dock",
@@ -195,11 +227,52 @@ export function OwnerHome() {
     const numericLength = Number.parseFloat(length || "0");
     const numericBreadth = Number.parseFloat(breadth || "0");
     if (!Number.isFinite(numericLength) || !Number.isFinite(numericBreadth)) {
-      return "0";
+      return "0 sq ft (0 sq ft · 0 sq m)";
     }
-    const area = numericLength * numericBreadth;
-    return `${Math.round(area)} Sq.Ft (74.8M)`;
-  }, [length, breadth]);
+    const areaInSelectedUnit = numericLength * numericBreadth;
+    const areaInSquareFeet = areaInSelectedUnit * FEET_PER_UNIT[dimensionUnit] ** 2;
+    const areaInSquareMeters = areaInSquareFeet / 10.7639104167;
+    const formatArea = (area: number) => area.toLocaleString("en-IN", { maximumFractionDigits: 2 });
+
+    return `${formatArea(areaInSelectedUnit)} ${SQUARE_UNIT_LABELS[dimensionUnit]} (${formatArea(areaInSquareFeet)} sq ft · ${formatArea(areaInSquareMeters)} sq m)`;
+  }, [length, breadth, dimensionUnit]);
+
+  const changeDimensionUnit = (nextUnit: DimensionUnit) => {
+    const convertLength = (value: string) => {
+      if (!value.trim()) return value;
+      const numericValue = Number(value);
+      if (!Number.isFinite(numericValue)) return value;
+      const convertedValue = numericValue * FEET_PER_UNIT[dimensionUnit] / FEET_PER_UNIT[nextUnit];
+      return Number(convertedValue.toPrecision(6)).toString();
+    };
+
+    setLength(convertLength(length));
+    setBreadth(convertLength(breadth));
+    setHeight(convertLength(height));
+    setDimensionUnit(nextUnit);
+  };
+
+  const changeSpaceAreaUnit = (nextUnit: SpaceAreaUnit) => {
+    const numericArea = Number(spaceArea.replace(/,/g, ""));
+    if (spaceArea.trim() && Number.isFinite(numericArea)) {
+      const convertedArea = numericArea * SQ_FEET_PER_AREA_UNIT[spaceAreaUnit] / SQ_FEET_PER_AREA_UNIT[nextUnit];
+      setSpaceArea(convertedArea.toLocaleString("en-IN", { maximumFractionDigits: 2 }));
+    }
+    setSpaceAreaUnit(nextUnit);
+  };
+
+  const changeTemperatureUnit = (nextUnit: TemperatureUnit) => {
+    if (temperature.trim()) {
+      const numericTemperature = Number(temperature);
+      if (Number.isFinite(numericTemperature)) {
+        const convertedTemperature = nextUnit === "Fahrenheit"
+          ? numericTemperature * 9 / 5 + 32
+          : (numericTemperature - 32) * 5 / 9;
+        setTemperature(Number(convertedTemperature.toFixed(2)).toString());
+      }
+    }
+    setTemperatureUnit(nextUnit);
+  };
 
   const toggleUsage = (value: string) => {
     setSelectedUsages((current) =>
@@ -249,6 +322,11 @@ export function OwnerHome() {
   };
 
   const handleNext = () => {
+    if (currentStep === 1 && !selectedFloor) {
+      setFloorError("Select a floor level to continue.");
+      return;
+    }
+
     if (currentStep >= totalSteps) {
       setShowReview(true);
       return;
@@ -260,6 +338,11 @@ export function OwnerHome() {
   const handleBack = () => {
     if (showReview) {
       setShowReview(false);
+      return;
+    }
+
+    if (currentStep === 1) {
+      router.push("/role-selection");
       return;
     }
 
@@ -305,12 +388,25 @@ export function OwnerHome() {
           <span className="field-label">
             Floor Level<span className="field-required">*</span>
           </span>
-          <div className="field-input field-select">
-            <span className="field-value field-placeholder">{selectedFloor}</span>
+          <div className="field-input field-select owner-native-select-wrap">
+            <select
+              className={`owner-native-select ${selectedFloor ? "selected" : ""}`}
+              value={selectedFloor}
+              onChange={(event) => {
+                setSelectedFloor(event.target.value);
+                setFloorError("");
+              }}
+              aria-label="Floor level"
+              required
+            >
+              <option value="" disabled>Select floor</option>
+              {FLOOR_OPTIONS.map((floor) => <option key={floor} value={floor}>{floor}</option>)}
+            </select>
             <svg viewBox="0 0 24 24" className="field-chevron" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
               <path d="m6 9 6 6 6-6" />
             </svg>
           </div>
+          {floorError && <span className="owner-field-error" role="alert">{floorError}</span>}
         </label>
 
         <label className="owner-field owner-field-wide">
@@ -325,12 +421,17 @@ export function OwnerHome() {
               aria-label="Space area"
             />
             <div className="owner-area-unit-wrap">
-              <span className="owner-area-unit">{spaceAreaUnit}</span>
-              <button type="button" className="owner-area-chevron" aria-label="Select area unit">
-                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-                  <path d="m6 9 6 6 6-6" />
-                </svg>
-              </button>
+              <select
+                className="owner-area-unit-select"
+                value={spaceAreaUnit}
+                onChange={(event) => changeSpaceAreaUnit(event.target.value as SpaceAreaUnit)}
+                aria-label="Space area unit"
+              >
+                {SPACE_AREA_UNITS.map((unit) => <option key={unit} value={unit}>{unit}</option>)}
+              </select>
+              <svg viewBox="0 0 24 24" className="owner-area-chevron-icon" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                <path d="m6 9 6 6 6-6" />
+              </svg>
             </div>
           </div>
         </label>
@@ -406,7 +507,14 @@ export function OwnerHome() {
         <div className="owner-dimension-field owner-dimension-field-unit">
           <label className="owner-dimension-label">Unit</label>
           <div className="owner-input-box owner-input-box--unit">
-            <span>{dimensionUnit}</span>
+            <select
+              className="owner-unit-select"
+              value={dimensionUnit}
+              onChange={(event) => changeDimensionUnit(event.target.value as DimensionUnit)}
+              aria-label="Dimension unit"
+            >
+              {DIMENSION_UNITS.map((unit) => <option key={unit} value={unit}>{unit}</option>)}
+            </select>
             <svg viewBox="0 0 24 24" fill="none" stroke={accentPurple} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
               <path d="m6 9 6 6 6-6" />
             </svg>
@@ -429,7 +537,14 @@ export function OwnerHome() {
         <div className="owner-dimension-field owner-dimension-field-unit owner-temp-select">
           <label className="owner-dimension-label">Unit</label>
           <div className="owner-input-box owner-input-box--unit">
-            <span>Celcius</span>
+            <select
+              className="owner-unit-select"
+              value={temperatureUnit}
+              onChange={(event) => changeTemperatureUnit(event.target.value as TemperatureUnit)}
+              aria-label="Temperature unit"
+            >
+              {TEMPERATURE_UNITS.map((unit) => <option key={unit} value={unit}>{unit}</option>)}
+            </select>
             <svg viewBox="0 0 24 24" fill="none" stroke={accentPurple} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
               <path d="m6 9 6 6 6-6" />
             </svg>
