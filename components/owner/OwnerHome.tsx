@@ -8,6 +8,9 @@ import { PricingAvailabilityStep } from "@/components/owner/PricingAvailabilityS
 import { PrimaryButton } from "@/components/ui/PrimaryButton";
 import { MAP_CONFIG } from "@/lib/maps/map-config";
 import type { LocationSearchResult } from "@/lib/maps/geocoding";
+import { createClient } from "@/lib/supabase/client";
+import { isAuthBypassEnabled } from "@/lib/auth/auth-bypass";
+import { savePreviewListing } from "@/lib/owner/host-data";
 
 const LocationMap = dynamic(() => import("@/components/location/LocationMap"), { ssr: false });
 
@@ -180,8 +183,11 @@ export function OwnerHome() {
   const [availabilityDays, setAvailabilityDays] = useState<string[]>(["Mon", "Wed", "Fri"]);
   const [minimumBookingDuration, setMinimumBookingDuration] = useState("3 Days");
 
-  const [photoFiles, setPhotoFiles] = useState<Record<string, { name: string; previewUrl: string }>>({});
-  const [documentFiles, setDocumentFiles] = useState<Record<string, string>>({});
+  const [photoFiles, setPhotoFiles] = useState<Record<string, { name: string; previewUrl: string; file: File }>>({});
+  const [documentFiles, setDocumentFiles] = useState<Record<string, { name: string; file: File }>>({});
+  const [draftListingId, setDraftListingId] = useState<string | null>(null);
+  const [isSubmittingListing, setIsSubmittingListing] = useState(false);
+  const [submissionError, setSubmissionError] = useState("");
   const [address, setAddress] = useState("JS Cold Storage, 16/80 1, Civil Lines, Kanpur-208001...");
   const [pincode, setPincode] = useState("");
   const [city, setCity] = useState("");
@@ -190,6 +196,7 @@ export function OwnerHome() {
 
   const [selectedLocation, setSelectedLocation] = useState<LocationSearchResult>(defaultLocation);
   const mapApiRef = useRef<any>(null);
+  const photoPreviewUrlsRef = useRef<string[]>([]);
 
   useEffect(() => {
     if (typeof navigator === "undefined" || !("geolocation" in navigator)) {
@@ -292,33 +299,183 @@ export function OwnerHome() {
     );
   };
 
-  useEffect(() => {
-    return () => {
-      Object.values(photoFiles).forEach(({ previewUrl }) => URL.revokeObjectURL(previewUrl));
-    };
-  }, [photoFiles]);
+  useEffect(() => () => {
+    photoPreviewUrlsRef.current.forEach((previewUrl) => URL.revokeObjectURL(previewUrl));
+  }, []);
 
   const handleUpload = (label: string, event: ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0];
     if (!file) return;
 
     const previewUrl = URL.createObjectURL(file);
+    photoPreviewUrlsRef.current.push(previewUrl);
     setPhotoFiles((current) => ({
       ...current,
-      [label]: { name: file.name, previewUrl },
+      [label]: { name: file.name, previewUrl, file },
     }));
   };
 
   const handleDocumentUpload = (label: string, event: ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0];
     if (!file) return;
-    setDocumentFiles((current) => ({ ...current, [label]: file.name }));
+    setDocumentFiles((current) => ({ ...current, [label]: { name: file.name, file } }));
   };
 
   const toggleAvailabilityDay = (day: string) => {
     setAvailabilityDays((current) =>
       current.includes(day) ? current.filter((item) => item !== day) : [...current, day],
     );
+  };
+
+  const handleSubmitListing = async () => {
+    if (isSubmittingListing) return;
+    setSubmissionError("");
+    if (isAuthBypassEnabled()) {
+      setIsSubmittingListing(true);
+      try {
+        const listingId = crypto.randomUUID();
+        const listing = {
+          id: listingId,
+          title: `${selectedSpaceType.replace(/-/g, " ")} in ${city || selectedLocation.city || "Kanpur"}`,
+          description,
+          city: city || selectedLocation.city || "Kanpur",
+          address,
+          status: "pending_review" as const,
+          property_type: selectedSpaceType,
+          floor_level: selectedFloor,
+          area_value: Number(spaceArea.replace(/,/g, "")) || null,
+          area_unit: spaceAreaUnit,
+          length: Number(length) || null,
+          breadth: Number(breadth) || null,
+          height: Number(height) || null,
+          dimension_unit: dimensionUnit,
+          temperature: Number(temperature) || null,
+          temperature_unit: temperatureUnit,
+          usage_types: selectedUsages,
+          loading_features: selectedLoadingFeatures,
+          price_amount: Number(rate) || 0,
+          price_model: priceModel,
+          security_amount: Number(securityAmount) || 0,
+          refund_within_days: Number(refundDays) || 1,
+          min_booking_days: minimumBookingDuration === "1 Week" ? 7 : minimumBookingDuration === "3 Days" ? 3 : 1,
+          pincode: pincode || null,
+          state: state || "Uttar Pradesh",
+          access_instructions: accessInstructions || null,
+          latitude: selectedLocation.latitude,
+          longitude: selectedLocation.longitude,
+          amenities: selectedAmenities,
+          availability_days: availabilityDays,
+          listing_photos: [],
+          created_at: new Date().toISOString(),
+        };
+        savePreviewListing(listing);
+        setDraftListingId(null);
+        router.replace(`/owner/submitted/${encodeURIComponent(listingId)}`);
+      } catch (error) {
+        setSubmissionError(error instanceof Error ? error.message : "Could not open the listing preview.");
+      } finally {
+        setIsSubmittingListing(false);
+      }
+      return;
+    }
+
+    const photos = Object.entries(photoFiles);
+    const documents = Object.entries(documentFiles);
+    if (!photos.length || !documents.length) {
+      setSubmissionError("Add at least one space photo and one KYC document before submitting.");
+      return;
+    }
+
+    setIsSubmittingListing(true);
+    try {
+      const supabase = createClient();
+      const { data: { user }, error: authError } = await supabase.auth.getUser();
+      if (authError || !user) throw new Error("Sign in before submitting a listing.");
+
+      let listingId = draftListingId;
+      if (!listingId) {
+        const response = await fetch("/api/listings", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            propertyType: selectedSpaceType,
+            floorLevel: selectedFloor,
+            areaValue: spaceArea,
+            areaUnit: spaceAreaUnit,
+            description,
+            usageTypes: selectedUsages,
+            length,
+            breadth,
+            height,
+            dimensionUnit,
+            temperature,
+            temperatureUnit,
+            loadingFeatures: selectedLoadingFeatures,
+            amenities: selectedAmenities,
+            priceModel,
+            rate,
+            securityAmount,
+            refundDays,
+            availabilityDays,
+            minimumBookingDuration,
+            address,
+            pincode,
+            city: city || selectedLocation.city || "Kanpur",
+            state: state || "Uttar Pradesh",
+            accessInstructions,
+            latitude: selectedLocation.latitude,
+            longitude: selectedLocation.longitude,
+          }),
+        });
+        const result = await response.json() as { listing?: { id?: string }; error?: string };
+        if (!response.ok || !result.listing?.id) throw new Error(result.error || "Could not save this listing.");
+        listingId = result.listing.id;
+        setDraftListingId(listingId);
+      }
+
+      const safeFileName = (name: string) => name.replace(/[^a-zA-Z0-9._-]/g, "_").slice(0, 100) || "upload";
+      const photoMetadata = [];
+      for (const [index, [label, photo]] of photos.entries()) {
+        const storagePath = `${user.id}/${listingId}/${crypto.randomUUID()}-${safeFileName(photo.name)}`;
+        const { error } = await supabase.storage.from("listing-photos").upload(storagePath, photo.file, {
+          contentType: photo.file.type,
+          upsert: false,
+        });
+        if (error) throw new Error(error.message);
+        photoMetadata.push({ storagePath, label, position: index });
+      }
+
+      const documentMetadata = [];
+      for (const [documentType, document] of documents) {
+        const storagePath = `${user.id}/${listingId}/${crypto.randomUUID()}-${safeFileName(document.name)}`;
+        const { error } = await supabase.storage.from("kyc-documents").upload(storagePath, document.file, {
+          contentType: document.file.type,
+          upsert: false,
+        });
+        if (error) throw new Error(error.message);
+        documentMetadata.push({ storagePath, documentType });
+      }
+
+      const assetResponse = await fetch(`/api/listings/${listingId}/assets`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ photos: photoMetadata, documents: documentMetadata }),
+      });
+      const assetResult = await assetResponse.json() as { error?: string };
+      if (!assetResponse.ok) throw new Error(assetResult.error || "Could not save uploaded file details.");
+
+      const submitResponse = await fetch(`/api/listings/${listingId}/submit`, { method: "POST" });
+      const submitResult = await submitResponse.json() as { listing?: { id?: string }; error?: string };
+      if (!submitResponse.ok || !submitResult.listing?.id) {
+        throw new Error(submitResult.error || "Could not submit this listing.");
+      }
+      setDraftListingId(null);
+      router.replace(`/owner/submitted/${encodeURIComponent(submitResult.listing.id)}`);
+    } catch (error) {
+      setSubmissionError(error instanceof Error ? error.message : "Could not submit this listing.");
+    } finally {
+      setIsSubmittingListing(false);
+    }
   };
 
   const handleNext = () => {
@@ -580,7 +737,6 @@ export function OwnerHome() {
   );
 
   const renderStep3 = () => {
-    const allAmenities = [...SECURITY_AMENITIES, ...UTILITY_AMENITIES, ...LOGISTICS_AMENITIES];
     const amenityCount = selectedAmenities.length;
 
     return (
@@ -743,7 +899,7 @@ export function OwnerHome() {
             const selectedDocument = documentFiles[documentName];
             return (
               <div key={documentName} className="owner-doc-row-wrap">
-                <input id={inputId} type="file" onChange={(event) => handleDocumentUpload(documentName, event)} hidden />
+                <input id={inputId} type="file" accept="image/*,application/pdf" onChange={(event) => handleDocumentUpload(documentName, event)} hidden />
                 <button type="button" className="owner-doc-row" onClick={() => document.getElementById(inputId)?.click()}>
                   <span className="owner-doc-left">
                     <span className="owner-doc-icon">
@@ -751,7 +907,7 @@ export function OwnerHome() {
                     </span>
                     <span className="owner-doc-name">{documentName}</span>
                   </span>
-                  <span className="owner-doc-required">{selectedDocument ? selectedDocument : "Required"}</span>
+                  <span className="owner-doc-required">{selectedDocument ? selectedDocument.name : "Required"}</span>
                 </button>
               </div>
             );
@@ -932,8 +1088,9 @@ export function OwnerHome() {
         <span className="owner-edit-bar-action"><Pencil size={15} /> Edit</span>
       </button>
 
-      <button type="button" className="owner-submit-button" onClick={handleNext}>
-        Submit your Listing
+      {submissionError && <p className="auth-error" role="alert">{submissionError}</p>}
+      <button type="button" className="owner-submit-button" onClick={handleSubmitListing} disabled={isSubmittingListing}>
+        {isSubmittingListing ? "Submitting..." : "Submit your Listing"}
       </button>
     </div>
   );

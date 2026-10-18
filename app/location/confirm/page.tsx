@@ -9,6 +9,12 @@ export default function LocationConfirmPage() {
 
   useEffect(() => {
     const timer = window.setTimeout(() => {
+      const returnTo = window.sessionStorage.getItem("spaceyaar-location-return-to");
+      if (returnTo?.startsWith("/owner/spaces")) {
+        window.sessionStorage.removeItem("spaceyaar-location-return-to");
+        router.replace(returnTo);
+        return;
+      }
       const role = getSelectedRole() ?? "renter";
       router.replace(role === "owner" ? "/owner" : "/renter");
     }, 250);

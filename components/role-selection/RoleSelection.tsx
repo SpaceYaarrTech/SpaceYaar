@@ -5,24 +5,36 @@ import { useRouter } from "next/navigation";
 import { motion } from "motion/react";
 import { ROLE_OPTIONS } from "@/lib/roles/role-config";
 import { setSelectedRole } from "@/lib/roles/role-storage";
+import { isAuthBypassEnabled } from "@/lib/auth/auth-bypass";
 import type { UserRole } from "@/types/roles";
 
 export function RoleSelection() {
   const router = useRouter();
   const [selectedRole, setSelectedRoleState] = useState<UserRole | null>(null);
   const [isNavigating, setIsNavigating] = useState(false);
+  const [roleError, setRoleError] = useState("");
 
-  const continueToRoleHome = () => {
+  const continueToRoleHome = async () => {
     if (!selectedRole || isNavigating) return;
     setIsNavigating(true);
-    setSelectedRole(selectedRole);
+    setRoleError("");
+    try {
+      if (!isAuthBypassEnabled()) {
+        const response = await fetch("/api/profile", {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ role: selectedRole }),
+        });
+        const result = await response.json() as { error?: string };
+        if (!response.ok) throw new Error(result.error || "Could not save your role.");
+      }
 
-    if (selectedRole === "owner") {
-      router.replace("/owner");
-      return;
+      setSelectedRole(selectedRole);
+      router.replace(selectedRole === "owner" ? "/owner" : "/location");
+    } catch (error) {
+      setRoleError(error instanceof Error ? error.message : "Could not save your role.");
+      setIsNavigating(false);
     }
-
-    router.replace("/location");
   };
 
   return (
@@ -92,6 +104,7 @@ export function RoleSelection() {
             <span aria-hidden="true">→</span>
           </button>
         </div>
+        {roleError && <p className="auth-error" role="alert">{roleError}</p>}
       </section>
     </main>
   );

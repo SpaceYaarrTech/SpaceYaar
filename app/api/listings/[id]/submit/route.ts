@@ -1,0 +1,41 @@
+import { NextResponse } from "next/server";
+import { createClient } from "@/lib/supabase/server";
+
+export async function POST(_request: Request, context: { params: Promise<{ id: string }> }) {
+  try {
+    const { id } = await context.params;
+    const supabase = await createClient();
+    const { data: { user }, error: authError } = await supabase.auth.getUser();
+    if (authError || !user) return NextResponse.json({ error: "Sign in to submit this listing." }, { status: 401 });
+
+    const { count: photoCount, error: photoError } = await supabase
+      .from("listing_photos")
+      .select("id", { count: "exact", head: true })
+      .eq("listing_id", id);
+    if (photoError) return NextResponse.json({ error: photoError.message }, { status: 400 });
+
+    const { count: documentCount, error: documentError } = await supabase
+      .from("listing_documents")
+      .select("id", { count: "exact", head: true })
+      .eq("listing_id", id);
+    if (documentError) return NextResponse.json({ error: documentError.message }, { status: 400 });
+
+    if (!photoCount || !documentCount) {
+      return NextResponse.json({ error: "Add at least one space photo and one KYC document before submitting." }, { status: 400 });
+    }
+
+    const { data, error } = await supabase
+      .from("listings")
+      .update({ status: "pending_review", updated_at: new Date().toISOString() })
+      .eq("id", id)
+      .eq("owner_id", user.id)
+      .eq("status", "draft")
+      .select("id, status")
+      .single();
+    if (error) return NextResponse.json({ error: error.message }, { status: 400 });
+
+    return NextResponse.json({ listing: data });
+  } catch {
+    return NextResponse.json({ error: "Could not submit listing." }, { status: 400 });
+  }
+}

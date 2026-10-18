@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { useState } from "react";
 import { AuthDivider } from "@/components/auth/AuthDivider";
 import { PasswordInput } from "@/components/auth/PasswordInput";
@@ -11,6 +12,7 @@ import { validateEmail, validatePassword } from "@/lib/auth/validation";
 import type { AuthProvider } from "@/types/auth";
 
 export function SignupForm() {
+  const router = useRouter();
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
@@ -27,7 +29,13 @@ export function SignupForm() {
     if (nextErrors.email || nextErrors.password || nextErrors.confirmPassword) return;
     setIsSubmitting(true);
     const result = await signUpWithEmail(email, password);
-    if (!result.ok) setMessage(result.message);
+    if (!result.ok) {
+      setMessage(result.message);
+    } else if (result.message) {
+      setMessage(result.message);
+    } else {
+      router.push("/role-selection");
+    }
     setIsSubmitting(false);
   };
 

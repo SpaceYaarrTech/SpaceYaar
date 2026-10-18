@@ -1,43 +1,72 @@
 import type { AuthResult } from "@/types/auth";
+import { createClient } from "@/lib/supabase/client";
 
-const NOT_CONFIGURED_MESSAGE = "Authentication is not connected yet. Please try again when SpaceYaar Auth is available.";
+const getErrorMessage = (error: unknown) =>
+  error instanceof Error ? error.message : "Authentication is temporarily unavailable. Please try again.";
 
 export async function signInWithGoogle(): Promise<AuthResult> {
-  return unavailableProvider("Google");
+  try {
+    const { error } = await createClient().auth.signInWithOAuth({
+      provider: "google",
+      options: { redirectTo: `${window.location.origin}/auth/callback` },
+    });
+    return error ? { ok: false, message: error.message } : { ok: true };
+  } catch (error) {
+    return { ok: false, message: getErrorMessage(error) };
+  }
 }
 
 export async function signInWithFacebook(): Promise<AuthResult> {
-  return unavailableProvider("Facebook");
+  try {
+    const { error } = await createClient().auth.signInWithOAuth({
+      provider: "facebook",
+      options: { redirectTo: `${window.location.origin}/auth/callback` },
+    });
+    return error ? { ok: false, message: error.message } : { ok: true };
+  } catch (error) {
+    return { ok: false, message: getErrorMessage(error) };
+  }
 }
 
 export async function signInWithEmail(email: string, password: string): Promise<AuthResult> {
-  void email;
-  void password;
-  await new Promise((resolve) => window.setTimeout(resolve, 450));
-  return { ok: false, message: NOT_CONFIGURED_MESSAGE };
+  try {
+    const { error } = await createClient().auth.signInWithPassword({ email, password });
+    return error ? { ok: false, message: error.message } : { ok: true };
+  } catch (error) {
+    return { ok: false, message: getErrorMessage(error) };
+  }
 }
 
 export async function signUpWithEmail(email: string, password: string): Promise<AuthResult> {
-  void email;
-  void password;
-  await new Promise((resolve) => window.setTimeout(resolve, 450));
-  return { ok: false, message: NOT_CONFIGURED_MESSAGE };
+  try {
+    const { data, error } = await createClient().auth.signUp({
+      email,
+      password,
+      options: { emailRedirectTo: `${window.location.origin}/auth/callback` },
+    });
+    if (error) return { ok: false, message: error.message };
+    return data.session
+      ? { ok: true }
+      : { ok: true, message: "Account created. Check your email to confirm your address." };
+  } catch (error) {
+    return { ok: false, message: getErrorMessage(error) };
+  }
 }
 
 export async function requestOtp(phone: string): Promise<AuthResult> {
-  void phone;
-  await new Promise((resolve) => window.setTimeout(resolve, 450));
-  return { ok: false, message: NOT_CONFIGURED_MESSAGE };
+  try {
+    const { error } = await createClient().auth.signInWithOtp({ phone });
+    return error ? { ok: false, message: error.message } : { ok: true };
+  } catch (error) {
+    return { ok: false, message: getErrorMessage(error) };
+  }
 }
 
 export async function verifyOtp(phone: string, otp: string): Promise<AuthResult> {
-  void phone;
-  void otp;
-  await new Promise((resolve) => window.setTimeout(resolve, 450));
-  return { ok: false, message: NOT_CONFIGURED_MESSAGE };
-}
-
-async function unavailableProvider(provider: "Google" | "Facebook"): Promise<AuthResult> {
-  await new Promise((resolve) => window.setTimeout(resolve, 450));
-  return { ok: false, message: `${provider} authentication is not connected yet.` };
+  try {
+    const { error } = await createClient().auth.verifyOtp({ phone, token: otp, type: "sms" });
+    return error ? { ok: false, message: error.message } : { ok: true };
+  } catch (error) {
+    return { ok: false, message: getErrorMessage(error) };
+  }
 }

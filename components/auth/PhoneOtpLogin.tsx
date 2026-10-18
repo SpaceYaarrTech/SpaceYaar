@@ -3,10 +3,11 @@
 import { useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { PrimaryButton } from "@/components/ui/PrimaryButton";
-import { requestOtp } from "@/lib/auth/auth-client";
+import { requestOtp, verifyOtp, signInWithGoogle } from "@/lib/auth/auth-client";
+import { isAuthBypassEnabled } from "@/lib/auth/auth-bypass";
 import { validatePhone } from "@/lib/auth/validation";
 
-const OTP_LENGTH = 4;
+const OTP_LENGTH = 6;
 
 export function PhoneOtpLogin() {
   const router = useRouter();
@@ -18,6 +19,7 @@ export function PhoneOtpLogin() {
   const [message, setMessage] = useState("");
   const [isOtpRequested, setIsOtpRequested] = useState(false);
   const [isResending, setIsResending] = useState(false);
+  const [isSubmitting, setIsSubmitting] = useState(false);
 
   const updateOtpDigit = (index: number, value: string) => {
     const nextValue = value.replace(/\D/g, "").slice(-1);
@@ -68,15 +70,33 @@ export function PhoneOtpLogin() {
     setPhoneError(error);
     if (error) return;
 
-    if (isOtpRequested) {
-      const otpValue = otpDigits.join("");
-      if (otpValue.length !== OTP_LENGTH) {
-        setOtpError("Please enter the 4 digit OTP.");
-        return;
+    setIsSubmitting(true);
+    if (!isOtpRequested) {
+      const result = await requestOtp(`+91${phone}`);
+      if (!result.ok) {
+        setMessage(result.message);
+      } else {
+        setIsOtpRequested(true);
+        setMessage("A verification code was sent to your phone.");
       }
+      setIsSubmitting(false);
+      return;
     }
 
-    router.push("/role-selection");
+    const otpValue = otpDigits.join("");
+    if (otpValue.length !== OTP_LENGTH) {
+      setOtpError("Please enter the 6 digit OTP.");
+      setIsSubmitting(false);
+      return;
+    }
+
+    const result = await verifyOtp(`+91${phone}`, otpValue);
+    if (!result.ok) {
+      setOtpError(result.message);
+    } else {
+      router.push("/role-selection");
+    }
+    setIsSubmitting(false);
   };
 
   const handleResendOtp = async () => {
@@ -87,7 +107,7 @@ export function PhoneOtpLogin() {
 
     setIsResending(true);
     setMessage("");
-    const result = await requestOtp(phone);
+    const result = await requestOtp(`+91${phone}`);
     if (!result.ok) {
       setMessage(result.message);
     } else {
@@ -100,6 +120,11 @@ export function PhoneOtpLogin() {
 
   const handleGoogleLogin = async () => {
     setMessage("");
+    const result = await signInWithGoogle();
+    if (!result.ok) setMessage(result.message);
+  };
+
+  const handleTestLogin = () => {
     router.push("/role-selection");
   };
 
@@ -166,7 +191,7 @@ export function PhoneOtpLogin() {
 
             {isOtpRequested && (
               <div className="auth-form-block">
-                <label className="auth-field-label">Enter 4 Digit OTP</label>
+                <label className="auth-field-label">Enter 6 Digit OTP</label>
                 <div className="otp-input-grid" role="group" aria-label="One time password input">
                   {otpDigits.map((digit, index) => (
                     <input
@@ -196,8 +221,8 @@ export function PhoneOtpLogin() {
               </div>
             )}
 
-            <PrimaryButton type="submit" className="verify-button">
-              {isOtpRequested ? "Verify & Login" : "Send OTP"}
+            <PrimaryButton type="submit" className="verify-button" disabled={isSubmitting}>
+              {isSubmitting ? (isOtpRequested ? "Verifying..." : "Sending...") : (isOtpRequested ? "Verify & Login" : "Send OTP")}
             </PrimaryButton>
           </form>
 
@@ -216,6 +241,12 @@ export function PhoneOtpLogin() {
             </svg>
             <span>Continue with Google</span>
           </button>
+
+          {isAuthBypassEnabled() && (
+            <button type="button" className="text-link-button" onClick={handleTestLogin}>
+              Continue without signing in (local testing)
+            </button>
+          )}
 
           {message && <p className="otp-message" role="status">{message}</p>}
 

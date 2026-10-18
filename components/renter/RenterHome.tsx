@@ -44,6 +44,70 @@ const INITIAL_FILTERS: Record<FilterKey, boolean> = {
   discount: false,
 };
 
+type PublicListing = {
+  id: string;
+  title: string;
+  description: string;
+  property_type: string;
+  area_value: number | null;
+  area_unit: string | null;
+  price_amount: number;
+  price_model: string;
+  min_booking_days: number;
+  city: string;
+  amenities: string[];
+  latitude: number | null;
+  longitude: number | null;
+  listing_photos: Array<{ image_url: string; label: string; position: number }>;
+};
+
+type RenterListing = Listing & { minimumBookingDays: number };
+
+const FALLBACK_LISTING_IMAGE = "https://images.unsplash.com/photo-1586528116311-ad8dd3c8310d?auto=format&fit=crop&w=1200&q=80";
+
+function distanceInKm(from: [number, number], to: [number, number]) {
+  const radians = (degrees: number) => degrees * Math.PI / 180;
+  const [fromLatitude, fromLongitude] = from.map(radians);
+  const [toLatitude, toLongitude] = to.map(radians);
+  const latitudeDelta = toLatitude - fromLatitude;
+  const longitudeDelta = toLongitude - fromLongitude;
+  const value = Math.sin(latitudeDelta / 2) ** 2
+    + Math.cos(fromLatitude) * Math.cos(toLatitude) * Math.sin(longitudeDelta / 2) ** 2;
+  return 6371 * 2 * Math.atan2(Math.sqrt(value), Math.sqrt(1 - value));
+}
+
+function formatDateInput(date: Date) {
+  return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}-${String(date.getDate()).padStart(2, "0")}`;
+}
+
+function mapPublicListing(listing: PublicListing, origin: [number, number] | null): RenterListing {
+  const amount = Number(listing.price_amount) || 0;
+  const priceUnit = listing.price_model.replace("Per ", "").toLowerCase();
+  const perDayAmount = listing.price_model === "Per Week"
+    ? amount / 7
+    : listing.price_model === "Per Month"
+      ? amount / 30
+      : amount;
+  const distanceValue = origin && listing.latitude !== null && listing.longitude !== null
+    ? distanceInKm(origin, [listing.latitude, listing.longitude])
+    : Number.POSITIVE_INFINITY;
+
+  return {
+    id: listing.id,
+    title: listing.title,
+    description: listing.description,
+    image: listing.listing_photos[0]?.image_url || FALLBACK_LISTING_IMAGE,
+    distance: Number.isFinite(distanceValue) ? `${distanceValue.toFixed(1)} km away` : listing.city,
+    distanceValue,
+    feature: listing.amenities[0] || listing.property_type,
+    area: listing.area_value ? `${listing.area_value} ${listing.area_unit || ""}`.trim() : listing.property_type,
+    pricePerDay: `₹${amount.toLocaleString("en-IN")}/${priceUnit}`,
+    priceValue: perDayAmount,
+    badge: { label: "Reviewed", type: "verified" },
+    minimumBookingDays: listing.min_booking_days,
+  };
+}
+
 function getBadgeClasses(type: Listing["badge"]["type"]) {
   switch (type) {
     case "instant":
@@ -66,7 +130,15 @@ function getBadgeIcon(type: Listing["badge"]["type"]) {
   }
 }
 
-function ListingCard({ listing }: { listing: Listing }) {
+function ListingCard({
+  listing,
+  onBook,
+  isDemo,
+}: {
+  listing: RenterListing;
+  onBook: (listing: RenterListing) => void;
+  isDemo: boolean;
+}) {
   return (
     <article className="listing-card" aria-label={listing.title}>
       <div className="listing-image-wrap">
@@ -95,8 +167,14 @@ function ListingCard({ listing }: { listing: Listing }) {
 
         <div className="listing-footer">
           <span className="listing-price">{listing.pricePerDay}</span>
-          <button type="button" className="book-button" aria-label={`Book ${listing.title}`}>
-            Book
+          <button
+            type="button"
+            className="book-button"
+            aria-label={isDemo ? `${listing.title} is a demo listing` : `Request booking for ${listing.title}`}
+            disabled={isDemo}
+            onClick={() => onBook(listing)}
+          >
+            {isDemo ? "Demo" : "Book"}
           </button>
         </div>
       </div>
@@ -144,6 +222,17 @@ export function RenterHome({ onRoleChange }: RenterHomeProps = {}) {
   const router = useRouter();
   const [selectedRole, setSelectedRoleState] = useState<UserRole>(() => getSelectedRole() ?? "renter");
   const [selectedFilters, setSelectedFilters] = useState<Record<FilterKey, boolean>>(INITIAL_FILTERS);
+  const [listings, setListings] = useState<RenterListing[]>([]);
+  const [isLoadingListings, setIsLoadingListings] = useState(true);
+  const [listingsError, setListingsError] = useState("");
+  const [isDemoListings, setIsDemoListings] = useState(false);
+  const [bookingListing, setBookingListing] = useState<RenterListing | null>(null);
+  const [bookingStartDate, setBookingStartDate] = useState("");
+  const [bookingEndDate, setBookingEndDate] = useState("");
+  const [bookingNote, setBookingNote] = useState("");
+  const [bookingError, setBookingError] = useState("");
+  const [bookingSuccess, setBookingSuccess] = useState("");
+  const [isSubmittingBooking, setIsSubmittingBooking] = useState(false);
 
   useEffect(() => {
     const storedRole = getSelectedRole();
@@ -152,14 +241,102 @@ export function RenterHome({ onRoleChange }: RenterHomeProps = {}) {
     }
   }, [selectedRole]);
 
+  useEffect(() => {
+    let isCurrent = true;
+
+    const loadListings = async () => {
+      setIsLoadingListings(true);
+      setListingsError("");
+      try {
+        const response = await fetch("/api/listings?limit=24", { cache: "no-store" });
+        const result = await response.json() as { listings?: PublicListing[]; error?: string };
+        if (result.error === "Backend is not configured yet.") {
+          if (isCurrent) {
+            setListings(LISTINGS.map((listing) => ({ ...listing, minimumBookingDays: 1 })));
+            setIsDemoListings(true);
+          }
+          return;
+        }
+        if (!response.ok) throw new Error(result.error || "Could not load spaces.");
+
+        let origin: [number, number] | null = null;
+        const storedLocation = window.sessionStorage.getItem("spaceyaar-selected-location");
+        if (storedLocation) {
+          try {
+            const location = JSON.parse(storedLocation) as { latitude?: number; longitude?: number };
+            if (Number.isFinite(location.latitude) && Number.isFinite(location.longitude)) {
+              origin = [location.latitude as number, location.longitude as number];
+            }
+          } catch {
+            origin = null;
+          }
+        }
+
+        if (isCurrent) {
+          setListings((result.listings ?? []).map((listing) => mapPublicListing(listing, origin)));
+          setIsDemoListings(false);
+        }
+      } catch (error) {
+        if (isCurrent) setListingsError(error instanceof Error ? error.message : "Could not load spaces.");
+      } finally {
+        if (isCurrent) setIsLoadingListings(false);
+      }
+    };
+
+    void loadListings();
+    return () => {
+      isCurrent = false;
+    };
+  }, []);
+
+  const openBookingRequest = (listing: RenterListing) => {
+    const startDate = new Date();
+    startDate.setDate(startDate.getDate() + 1);
+    const endDate = new Date(startDate);
+    endDate.setDate(endDate.getDate() + listing.minimumBookingDays);
+    setBookingListing(listing);
+    setBookingStartDate(formatDateInput(startDate));
+    setBookingEndDate(formatDateInput(endDate));
+    setBookingNote("");
+    setBookingError("");
+    setBookingSuccess("");
+  };
+
+  const submitBookingRequest = async (event: React.FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    if (!bookingListing || isSubmittingBooking) return;
+    setIsSubmittingBooking(true);
+    setBookingError("");
+
+    try {
+      const response = await fetch("/api/bookings", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          listingId: bookingListing.id,
+          startDate: bookingStartDate,
+          endDate: bookingEndDate,
+          message: bookingNote,
+        }),
+      });
+      const result = await response.json() as { error?: string };
+      if (!response.ok) throw new Error(result.error || "Could not send booking request.");
+      setBookingSuccess("Your booking request was sent to the owner.");
+    } catch (error) {
+      setBookingError(error instanceof Error ? error.message : "Could not send booking request.");
+    } finally {
+      setIsSubmittingBooking(false);
+    }
+  };
+
   const filteredListings = useMemo(() => {
     const active = Object.entries(selectedFilters).filter(([, isSelected]) => isSelected);
 
     if (!active.length) {
-      return LISTINGS;
+      return listings;
     }
 
-    let next = [...LISTINGS];
+    let next = [...listings];
 
     if (selectedFilters.within1km) {
       next = next.filter((listing) => listing.distanceValue <= 1);
@@ -186,7 +363,7 @@ export function RenterHome({ onRoleChange }: RenterHomeProps = {}) {
     }
 
     return next.length ? next : [];
-  }, [selectedFilters]);
+  }, [listings, selectedFilters]);
 
   const handleRoleChange = (nextRole: UserRole) => {
     setSelectedRoleState(nextRole);
@@ -299,12 +476,73 @@ export function RenterHome({ onRoleChange }: RenterHomeProps = {}) {
       <div className="section-heading">Explore Near by</div>
 
       <div className="listing-stack">
-        {filteredListings.length ? (
-          filteredListings.map((listing) => <ListingCard key={listing.id} listing={listing} />)
+        {isLoadingListings ? (
+          <div className="empty-state" role="status">Loading available spaces...</div>
+        ) : listingsError ? (
+          <div className="empty-state" role="alert">{listingsError}</div>
         ) : (
-          <div className="empty-state">No spaces match this filter yet.</div>
+          <>
+            {isDemoListings && (
+              <div className="empty-state" role="status">
+                Demo spaces only. Connect Supabase to load live listings and enable booking.
+              </div>
+            )}
+            {filteredListings.length ? (
+              filteredListings.map((listing) => (
+                <ListingCard key={listing.id} listing={listing} onBook={openBookingRequest} isDemo={isDemoListings} />
+              ))
+            ) : (
+              <div className="empty-state">No spaces match this filter yet.</div>
+            )}
+          </>
         )}
       </div>
+
+      {bookingListing && (
+        <div
+          className="booking-dialog-backdrop"
+          onMouseDown={(event) => {
+            if (event.target === event.currentTarget) setBookingListing(null);
+          }}
+        >
+          <form className="booking-dialog" role="dialog" aria-modal="true" aria-labelledby="booking-dialog-title" onSubmit={submitBookingRequest}>
+            <div className="booking-dialog-header">
+              <div>
+                <h2 id="booking-dialog-title">Request this space</h2>
+                <p>{bookingListing.title}</p>
+              </div>
+              <button type="button" className="booking-dialog-close" aria-label="Close" onClick={() => setBookingListing(null)}>×</button>
+            </div>
+
+            <div className="booking-dialog-dates">
+              <label>
+                Start date
+                <input type="date" value={bookingStartDate} min={formatDateInput(new Date())} onChange={(event) => setBookingStartDate(event.target.value)} required />
+              </label>
+              <label>
+                End date
+                <input type="date" value={bookingEndDate} min={bookingStartDate} onChange={(event) => setBookingEndDate(event.target.value)} required />
+              </label>
+            </div>
+
+            <p className="booking-dialog-helper">Minimum booking: {bookingListing.minimumBookingDays} days · Rate: {bookingListing.pricePerDay}</p>
+            <label className="booking-dialog-note">
+              Note to owner
+              <textarea value={bookingNote} maxLength={500} onChange={(event) => setBookingNote(event.target.value)} placeholder="What will you store?" />
+            </label>
+
+            {bookingError && <p className="booking-dialog-error" role="alert">{bookingError}</p>}
+            {bookingSuccess && <p className="booking-dialog-success" role="status">{bookingSuccess}</p>}
+
+            <div className="booking-dialog-actions">
+              <button type="button" className="booking-dialog-cancel" onClick={() => setBookingListing(null)}>Close</button>
+              <button type="submit" className="booking-dialog-submit" disabled={isSubmittingBooking || Boolean(bookingSuccess)}>
+                {isSubmittingBooking ? "Sending..." : bookingSuccess ? "Request sent" : "Send request"}
+              </button>
+            </div>
+          </form>
+        </div>
+      )}
 
       <BottomNavigation activeTab="Home" />
     </main>
