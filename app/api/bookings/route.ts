@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
+import { createAdminClient } from "@/lib/supabase/admin";
 
 export async function GET() {
   try {
@@ -12,7 +13,26 @@ export async function GET() {
       .select("id, listing_id, renter_id, owner_id, start_date, end_date, message, status, quoted_total, created_at, listings(title, city, property_type)")
       .order("created_at", { ascending: false });
     if (error) return NextResponse.json({ error: error.message }, { status: 400 });
-    return NextResponse.json({ bookings: data ?? [] });
+    const bookings = data ?? [];
+    const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
+    if (!serviceRoleKey || bookings.length === 0) {
+      return NextResponse.json({ bookings: bookings.map((booking) => ({ ...booking, payment_status: null })) });
+    }
+
+    const admin = createAdminClient();
+    const { data: payments, error: paymentsError } = await admin
+      .from("razorpay_payments")
+      .select("booking_id, status")
+      .in("booking_id", bookings.map((booking) => booking.id))
+      .eq("status", "captured");
+    if (paymentsError) return NextResponse.json({ error: "Could not load booking payment status." }, { status: 500 });
+    const paidBookingIds = new Set((payments ?? []).map((payment) => payment.booking_id));
+    return NextResponse.json({
+      bookings: bookings.map((booking) => ({
+        ...booking,
+        payment_status: paidBookingIds.has(booking.id) ? "captured" : null,
+      })),
+    });
   } catch {
     return NextResponse.json({ error: "Backend is not configured yet." }, { status: 503 });
   }

@@ -41,7 +41,18 @@ set status = 'published'
 where id = 'LISTING_UUID' and status = 'pending_review';
 ```
 
-Booking requests are implemented; payment processing is not. A payment provider account, verified merchant onboarding, and payment UI/API are still needed before accepting money.
+Booking requests and Razorpay Checkout for owner-accepted bookings are implemented. Apply `supabase/migrations/20261019000000_razorpay_payments.sql` after the existing migrations. Payment, webhook, and subscription tables are only writable by the Supabase service role; never expose that key to browser code.
+
+Set the following server environment variables in `.env.local` and in the production deployment:
+
+```env
+SUPABASE_SERVICE_ROLE_KEY=your_private_supabase_service_role_key
+RAZORPAY_KEY_ID=rzp_test_your_key_id
+RAZORPAY_KEY_SECRET=your_private_razorpay_key_secret
+RAZORPAY_WEBHOOK_SECRET=your_razorpay_webhook_secret
+```
+
+Use Razorpay test keys for testing, then replace them with live keys after merchant onboarding. Configure a Razorpay webhook pointing to `/api/payments/razorpay/webhook`, using the same webhook secret, and subscribe to `payment.captured`, `payment.failed`, and the desired `subscription.*` events. Payment amount and eligibility are read server-side from an accepted booking; client-supplied amounts are never used. Subscription events are stored in `razorpay_subscriptions`, while every verified webhook is deduplicated in `razorpay_webhooks`. Creating customer-facing subscriptions/plans is not part of the booking checkout flow.
 
 ## Production checklist
 
