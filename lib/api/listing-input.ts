@@ -1,4 +1,5 @@
 const PRICE_MODELS = ["Per Day", "Per Week", "Per Month", "Customize"] as const;
+const AVAILABILITY_DAYS = ["Mon", "Tues", "Wed", "Thu", "Fri", "Sat", "Sun"] as const;
 const DIMENSION_UNITS = ["Ft", "Gaj", "Cm", "Inch", "Meter"] as const;
 const TEMPERATURE_UNITS = ["Celsius", "Fahrenheit"] as const;
 const MINIMUM_DURATIONS: Record<string, number> = { "1 Day": 1, "3 Days": 3, "1 Week": 7 };
@@ -54,6 +55,9 @@ export function parseListingDraft(value: unknown) {
   }
   if (!minimumBookingDays || !availabilityDays.length) {
     return { error: "Choose availability days and a minimum booking duration." } as const;
+  }
+  if (availabilityDays.some((day) => !AVAILABILITY_DAYS.includes(day as (typeof AVAILABILITY_DAYS)[number]))) {
+    return { error: "Choose valid availability weekdays." } as const;
   }
   if (!DIMENSION_UNITS.includes(dimensionUnit as (typeof DIMENSION_UNITS)[number])) {
     return { error: "Choose a supported dimension unit." } as const;

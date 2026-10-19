@@ -29,7 +29,7 @@ export async function POST(_request: Request, context: { params: Promise<{ id: s
       .update({ status: "pending_review", updated_at: new Date().toISOString() })
       .eq("id", id)
       .eq("owner_id", user.id)
-      .eq("status", "draft")
+      .in("status", ["draft", "rejected"])
       .select("id, status")
       .single();
     if (error) return NextResponse.json({ error: error.message }, { status: 400 });

@@ -9,30 +9,30 @@ The application already has a useful backend foundation: Supabase Auth, Postgres
 
 **Estimated completion:**
 
-- **About 60% of the first-pass API surface** for the currently visible product flows exists in code.
-- **About 45–50% of end-to-end production backend capability** is complete. This lower estimate accounts for incomplete lifecycle rules, missing operations/admin features, absent messaging/notifications/payouts, and screens that currently show placeholders or static/derived data.
+- **About 70% of the first-pass API surface** for the currently visible product flows exists in code.
+- **About 55–60% of end-to-end production backend capability** is implemented. Remaining work includes production provider configuration and verification, booking completion/cancellation/refunds, payouts, notifications, analytics, and renter profile capabilities.
 
-These are engineering estimates, not a line-count metric. Core renter discovery and basic owner listing/request flows are present, but the service is not yet a complete marketplace backend.
+These are engineering estimates, not a line-count metric. Core owner listing review → renter discovery/request → owner acceptance → renter checkout is now represented in the application. Runtime verification still depends on applying migrations and configuring Supabase and Razorpay test credentials.
 
 ### Highest-priority issues
 
-1. **Role selection cannot currently persist through its API call.** The role-selection screen sends `{ role }` to `PATCH /api/profile`, while that handler requires business name, business type, and address. As written, a normal role-selection request is rejected before the client can continue.
-2. **Booking availability is not enforced.** The API checks date order and minimum duration, but does not check the listing's weekly availability, overlapping accepted bookings, or atomically reserve a date range.
-3. **Listing moderation is manual.** Owners can submit a listing to `pending_review`, but there is no admin queue or approve/reject API or screen.
-4. **Renter profile, conversations, notifications, analytics, and payouts are not implemented as backend capabilities.**
-5. **Payment state should be reconciled and tested against real Razorpay event behavior before live payments.** The flow has order creation, signature/provider verification and webhook persistence; subscriptions are stored from webhook payloads but there is no customer subscription workflow.
+1. **Environment setup is required for a live happy-path run.** Apply all migrations, configure Supabase Auth/Storage, set the server-side admin allowlist and provide Razorpay test keys.
+2. **Payment integration still needs a real test-mode run.** The handlers verify signatures and provider capture, but runtime provider events, webhook delivery and recovery have not been verified here.
+3. **Booking lifecycle is intentionally incomplete beyond the current request/accept/decline/cancel-request flow.** Completion, accepted-booking cancellation and refund policy still need product decisions and implementation.
+4. **Renter profile, conversations, notifications, analytics, refunds and payouts** are not implemented as end-to-end capabilities.
 
 ## 2. Current product screens and their backend needs
 
 | Area / screens | Current data/actions | Backend assessment |
 |---|---|---|
 | Sign up, login, OTP, OAuth callback | Supabase Auth client handles email, phone OTP, Google/Facebook; auth callback exchanges the code | Mostly delegated to Supabase. Provider setup, SMTP/SMS and callback configuration remain environment/project operations. No custom auth API is needed for the present approach. |
-| Role selection | Saves owner/renter choice through `PATCH /api/profile` | API contract mismatch; role update is not supported by the current profile PATCH validation. |
+| Role selection | Saves owner/renter choice through `PATCH /api/profile` | Role-only updates are validated separately from owner business-profile updates. |
 | Location selection / confirmation | Map/geocoding and browser location state | Client-side; selected location is not a persisted profile preference or server-side search context. |
 | Renter home / Find a Space / map / detail | Reads published listings, shows listing facts and photos, can open a booking request | Real listing APIs exist. Search result set is capped; several filters/sorts and map-distance behavior are client-side. |
 | Saved Spaces | Favorites and cards are loaded from the favorites API; city and property-type groups are derived in the browser | Save/unsave works; user-created collections do not exist. |
-| My Bookings / booking request | Request with dates/message; list status and payment state; accepted-booking contact; Razorpay checkout | Main flow exists, but booking availability, strict transition rules, completion, cancellation policy/refunds, and notifications need work. |
-| Owner listing onboarding / edit / spaces | Draft listing, upload photos/private KYC docs, attach metadata, submit for review, view/edit owner listings | Core owner listing workflow exists. Review is manual; private document handling and deletion/retention need production policy. |
+| My Bookings / booking request | Request with dates/message; list status and payment state; accepted-booking contact; Razorpay checkout | Date/minimum-stay/weekday rules and overlap-safe acceptance run in database functions. Completion, accepted-booking cancellation/refunds, and notifications need work. |
+| Owner listing onboarding / edit / spaces | Draft listing, upload photos/private KYC docs, attach metadata, submit for review, view/edit owner listings | Core owner listing workflow exists. Rejected listings can be resubmitted. Private document handling and retention need production policy. |
+| Internal listing moderation | Hidden three-tap dashboard entry; allowlisted admin sees pending listings and private KYC links, then approves/rejects with reason | Implemented with server-side user-ID allowlist and an audit record; apply the moderation migration and configure `SPACEYAAR_ADMIN_USER_IDS`. |
 | Owner dashboard / renters / request detail | Listing and booking summaries; accept/reject requests | Data is present. Dashboard summaries are derived client-side. “In Chat” is empty/unavailable. |
 | Owner analytics | Counts listings/bookings; views and payouts display “Not tracked” | No analytics/event or payout backend. |
 | Owner profile / business profile / password | Business data and photo; password uses Supabase Auth | Business profile API exists. Payout and notification settings are explicitly unavailable. |
@@ -46,7 +46,7 @@ Next.js screens
   ├─ Supabase client + Storage ───────── Owner photo/KYC uploads, profile photo
   └─ Next.js route handlers
        ├─ Supabase SSR client ────────── User-scoped reads/writes under RLS
-       ├─ Supabase service role ──────── Payment metadata, webhook, owner contact
+       ├─ Supabase service role ──────── Payment metadata, webhook, owner contact, allowlisted listing review
        └─ Razorpay SDK / signed webhook ─ Payment order, provider verification
 
 Supabase
@@ -65,29 +65,32 @@ Supabase
 - `razorpay_payments`: order/payment IDs, amount, currency and payment state.
 - `razorpay_webhooks`: provider event ID and raw event payload for deduplication/audit.
 - `razorpay_subscriptions`: subscription snapshots received through webhooks; no current subscription product flow.
+- `listing_moderation_events`: append-only moderation decisions and rejection reasons.
 
 RLS is enabled for the core tables. The service-role key is intended to remain server-side. Some owner workflows upload files directly from the browser under authenticated Storage policies, then call a route to persist metadata.
 
 ## 4. Implemented API inventory
 
-The repository currently contains **14 API route files** (plus the Supabase Auth callback route). “Implemented” below means there is handler code; it does not imply every business rule or production integration is complete.
+The repository currently contains **16 API route files** (plus the Supabase Auth callback route). “Implemented” below means there is handler code; it does not imply provider setup or every product lifecycle is production-complete.
 
 | Route | Methods | Current responsibility | Status / limitations |
 |---|---|---|---|
-| `/api/profile` | `GET`, `PATCH` | Read profile and update owner business fields/profile-photo path | Role selection sends `{ role }`, but PATCH requires business fields. Renter profile editing/preferences are not covered. |
+| `/api/profile` | `GET`, `PATCH` | Read profile and update role or owner business fields/profile-photo path | Role-only updates are accepted separately. Renter profile editing/preferences are not covered. |
 | `/api/listings` | `GET`, `POST` | Search published listings; create an owner draft | GET supports city, type, min/max price, and a limit up to 50. No cursor pagination, full-text search, geospatial radius, or server-side availability filter. |
 | `/api/listings/[id]` | `GET`, `PATCH`, `DELETE` | Read public listing; update eligible owner listing; delete a draft | Public details are published-only. Edit/delete are owner-scoped; deletion only supports drafts. |
-| `/api/listings/mine` | `GET` | Owner listings and signed KYC document URLs | Signed URL failures return a null URL; no document review workflow. |
+| `/api/listings/mine` | `GET` | Owner listings and signed KYC document URLs | Signed URL failures return a null URL; admin document review uses a separate short-lived signed URL. |
 | `/api/listings/[id]/assets` | `POST` | Persist photo/document metadata after client upload | Upload itself is direct to Supabase Storage. |
-| `/api/listings/[id]/submit` | `POST` | Require at least one photo and KYC document; transition draft to pending review | No staff review endpoint. |
+| `/api/listings/[id]/submit` | `POST` | Require at least one photo and KYC document; transition draft/rejected listing to pending review | Moderation is provided through the allowlisted internal admin route. |
 | `/api/favorites` | `GET`, `POST`, `DELETE` | Read, save and unsave published listings | Favorites only; collections are browser-derived. |
-| `/api/bookings` | `GET`, `POST` | List participant-visible bookings (plus captured payment status when service key is configured); create renter request | Date/price checks exist. No overlap or availability validation; custom price model is not explicitly priced; errors and transition behavior need standardization. |
-| `/api/bookings/[id]` | `PATCH` | Accept, reject, or cancel a booking | RLS supplies participant/status limits, but the handler does not express a full transition matrix or conflict-safe acceptance. No completion action. |
+| `/api/bookings` | `GET`, `POST` | List participant-visible bookings (plus captured payment status when service key is configured); create renter request | Database function validates renter role, future dates, availability weekdays, minimum duration and quote. `Customize` is quote-only and cannot be booked through automatic checkout. |
+| `/api/bookings/[id]` | `PATCH` | Accept, reject, or cancel a pending booking request | Database function enforces actor and state rules and locks the listing while checking overlapping accepted bookings. No completion action. |
 | `/api/owner/renters` | `GET` | Owner booking requests with renter and listing summary | “In Chat” is not backed by a conversation service. |
 | `/api/bookings/[id]/contact` | `GET` | Return owner phone to the renter for an accepted booking | Restricted to the renter on that accepted booking; uses service role to read contact. |
 | `/api/payments/razorpay/create-order` | `POST` | Validate renter/accepted booking/amount and create a Razorpay order | Server derives amount from booking and persists the order. Payment idempotency/concurrent order behavior deserves hardening. |
 | `/api/payments/razorpay/verify-payment` | `POST` | Verify checkout signature and provider-captured payment; persist captured state | Supports repeat success for the same captured payment. Needs integration tests and operational reconciliation. |
 | `/api/payments/razorpay/webhook` | `POST` | Verify webhook signature, update payment/subscription records, store event ID/payload | Subscription data is a snapshot only. No payouts, refunds, or subscription creation. |
+| `/api/admin/listings` | `GET` | List pending listings and short-lived signed private-document review URLs | Server-side `SPACEYAAR_ADMIN_USER_IDS` allowlist required. |
+| `/api/admin/listings/[id]/review` | `PATCH` | Approve/publish or reject a pending listing and record moderation audit | Only allowlisted signed-in users; rejection requires a reason. |
 
 ## 5. Target API and service design
 
@@ -99,7 +102,7 @@ Keep Next.js route handlers as a thin HTTP/auth/validation boundary for now. Use
 
 **Correct / add:**
 
-- `PATCH /api/profile/role` or amend `PATCH /api/profile` to accept a separately validated role-only update. Preserve the existing owner business-profile update contract.
+- Role-only updates are handled by `PATCH /api/profile`; preserve the separation from owner business-profile updates.
 - Add `PATCH /api/profile` fields for user-editable identity data only when the renter profile UI is defined.
 - Add notification preferences only after channels and consent rules are selected.
 - Do not create custom password/session endpoints unless Supabase Auth ceases to own those responsibilities.
@@ -112,7 +115,7 @@ Keep Next.js route handlers as a thin HTTP/auth/validation boundary for now. Use
 
 - `GET /api/listings`: cursor pagination and explicit filters for space type, location/radius, rate model, capacity/features, and availability. Define sort and filter semantics centrally.
 - `GET /api/listings/[id]/availability?from=...&to=...`: return bookable/unavailable dates after booking rules are implemented.
-- Admin-only review routes, for example `GET /api/admin/listings?status=pending_review` and `PATCH /api/admin/listings/[id]/review` with approve/reject reason and audit record.
+- Admin-only review routes are implemented at `GET /api/admin/listings` and `PATCH /api/admin/listings/[id]/review`, with an environment allowlist and audit record.
 - Optional view/impression event route only if analytics are product requirements; avoid counting client page renders as authoritative views without bot/deduplication rules.
 
 ### C. Booking lifecycle and availability
@@ -121,7 +124,7 @@ Keep Next.js route handlers as a thin HTTP/auth/validation boundary for now. Use
 
 **Add or evolve:**
 
-- Make acceptance transactional: re-check listing availability and all overlapping accepted/paid bookings, then transition request. Enforce exclusion/locking or an atomic database function so two owners/actions cannot reserve the same range.
+- Booking creation and acceptance use transactional database functions. Both serialize on the listing row; acceptance re-checks overlap against accepted reservations. Configure selected weekdays and date ranges consistently in the renter UI.
 - Decide and document date inclusivity, timezone, minimum stay, price model semantics (`Customize` in particular), deposits, cancellation cutoff, and owner overrides.
 - Add a single explicit transition contract, such as `PATCH /api/bookings/[id]` with permitted action by actor, source state, destination state, and audit event. Do not accept arbitrary status assignment.
 - Add completion/expiry handling (owner/renter confirmation or a scheduled job), and define cancellation/refund rules.
@@ -160,7 +163,7 @@ Do not create every table preemptively. Add the following only as the correspond
 | Feature | Suggested data additions |
 |---|---|
 | Booking availability | Booking exclusion/overlap constraint or reservation table; optional listing availability exception/blackout dates. Existing `availability_days` is weekly metadata, not a date calendar. |
-| Moderation | `listing_reviews` or moderation audit table with actor, decision, reason, and timestamp. |
+| Moderation | `listing_moderation_events` is implemented with actor, decision, reason, and timestamp. |
 | Booking audit / notification | `booking_events`; `notifications` and `notification_preferences` if user-visible delivery is in scope. |
 | Messaging | `conversations`, `conversation_members`, `messages`, read markers. |
 | Collections | `collections`, `collection_items`, uniqueness and owner-scoped RLS. |
@@ -173,12 +176,10 @@ Any migration must include indexes, constraints, RLS, grants, retention/cleanup 
 
 ### P0 — make current core flow correct
 
-1. Fix role selection/profile update contract and add route-level regression coverage.
-2. Implement strict booking input validation and explicit actor/state transition checks.
-3. Add availability checks and race-safe booking acceptance; define pricing for every `price_model`.
-4. Harden Razorpay payment state/idempotency and verify webhook and checkout against provider test mode.
-5. Define and implement admin listing review; until then, document manual review as an operational blocker.
-6. Add consistent API error handling and remove any dependency on the UI-auth-bypass for real API access.
+1. Apply the booking and moderation migrations and verify them against the configured Supabase project.
+2. Exercise the owner/renter journey with two real Auth accounts and confirm Razorpay test checkout and webhook behavior.
+3. Harden payment idempotency/reconciliation before live payments.
+4. Add completion, accepted-booking cancellation, refund and expiry rules.
 
 ### P1 — complete visible but incomplete screens
 
@@ -201,13 +202,13 @@ Any migration must include indexes, constraints, RLS, grants, retention/cleanup 
 |---|---|
 | Supabase Auth integration | Present; relies on correct external project/provider configuration. |
 | Renter listing discovery and saved items | Functional API foundation; search is limited and collections are derived. |
-| Owner listing CRUD/uploads/submission | Functional foundation; review and compliance workflow incomplete. |
-| Booking requests and owner responses | Basic path present; availability, atomicity, transition/completion and cancellation rules incomplete. |
-| Razorpay checkout | Core order/verify/webhook handlers present; not evidence of live readiness, refunds, payouts or reconciliation. |
-| Owner/renter profiles | Owner business profile mostly present; role update mismatch and renter profile gap remain. |
+| Owner listing CRUD/uploads/submission | Functional foundation with allowlisted review/approve/reject flow; KYC policy and document retention remain. |
+| Booking requests and owner responses | Date availability, overlap-safe acceptance and request transition rules implemented; completion and cancellation/refund rules remain. |
+| Razorpay checkout | Core order/verify/webhook handlers present; requires test-account verification and does not include refunds, payouts or reconciliation. |
+| Owner/renter profiles | Owner business profile and role selection work; renter profile settings remain incomplete. |
 | Messaging/notifications | Not implemented. |
 | Analytics | Only simple counts derived from existing data; views/earnings not tracked. |
-| Admin operations | No moderation API/screen; listing publication currently requires manual intervention. |
+| Admin operations | Hidden-entry moderation screen and API protected by an admin user-ID allowlist; broader support tools are absent. |
 | Production operations/security | RLS and private service-role patterns exist; provider setup, integration tests, observability, retention and recovery still need sign-off. |
 
-**Bottom line:** The app has a working backend skeleton and several real end-to-end data flows. It is not yet production-complete as a marketplace. Fix the role contract and booking/payment invariants first; then build the missing moderation and communication/operations capabilities based on explicit product decisions.
+**Bottom line:** The code now covers the core owner-to-renter journey through payment, subject to Supabase migrations and Razorpay test credentials being configured. This is not yet a production-complete marketplace: provider verification, refund/payout operations, notifications, messaging, analytics and account lifecycle work remain.

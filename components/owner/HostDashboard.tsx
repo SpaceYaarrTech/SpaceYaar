@@ -2,6 +2,8 @@
 
 import Link from "next/link";
 import Image from "next/image";
+import { useRouter } from "next/navigation";
+import { useRef } from "react";
 import {
   Banknote,
   Building2,
@@ -45,6 +47,8 @@ function statusLabel(status: string) {
 }
 
 export function HostDashboard() {
+  const router = useRouter();
+  const adminTapState = useRef({ count: 0, lastTapAt: 0 });
   const { data, loading, error } = useHostData();
   const activeListings = data?.listings.filter((listing) => ["published", "pending_review", "rejected"].includes(listing.status)) ?? [];
   const pendingBookings = data?.bookings.filter((booking) =>
@@ -58,12 +62,23 @@ export function HostDashboard() {
   const bannerListing = activeListings.find((listing) => listing.status === "published")
     ?? activeListings.find((listing) => listing.status === "pending_review" || listing.status === "rejected");
 
+  const handleDashboardTitleTap = () => {
+    const now = Date.now();
+    if (now - adminTapState.current.lastTapAt > 1800) adminTapState.current.count = 0;
+    adminTapState.current.lastTapAt = now;
+    adminTapState.current.count += 1;
+    if (adminTapState.current.count === 3) {
+      adminTapState.current.count = 0;
+      router.push("/admin/review");
+    }
+  };
+
   return (
     <div className="host-dashboard">
       <header className="host-header">
         <div>
           <p className="host-greeting">{data?.profile?.display_name ? `${data.profile.display_name.split(" ")[0]},` : "Maalik,"}</p>
-          <h1>Host Dashboard</h1>
+          <button type="button" className="host-dashboard-title-trigger" onClick={handleDashboardTitleTap}>Host Dashboard</button>
         </div>
         <Link href="/owner/profile" className="host-avatar-button" aria-label="Open profile">
           {data?.profile?.profile_photo_url

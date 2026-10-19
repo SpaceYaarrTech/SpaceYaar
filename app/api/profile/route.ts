@@ -49,6 +49,25 @@ export async function PATCH(request: Request) {
     const { data: { user }, error: authError } = await supabase.auth.getUser();
     if (authError || !user) return NextResponse.json({ error: "Sign in to update your profile." }, { status: 401 });
 
+    if (Object.keys(body).length === 1 && typeof body.role === "string") {
+      if (body.role !== "owner" && body.role !== "renter") {
+        return NextResponse.json({ error: "Choose a supported profile role." }, { status: 400 });
+      }
+
+      const { data, error } = await supabase
+        .from("profiles")
+        .update({ role: body.role, updated_at: new Date().toISOString() })
+        .eq("id", user.id)
+        .select(PROFILE_COLUMNS)
+        .single();
+      if (error) return NextResponse.json({ error: error.message }, { status: 400 });
+      return NextResponse.json({ profile: profileResponse(supabase, data, user.email) });
+    }
+
+    if ("role" in body) {
+      return NextResponse.json({ error: "Update role separately from business profile details." }, { status: 400 });
+    }
+
     if (typeof body.business_name !== "string" || !body.business_name.trim() || body.business_name.trim().length > 120) {
       return NextResponse.json({ error: "Enter a business name of 120 characters or fewer." }, { status: 400 });
     }
