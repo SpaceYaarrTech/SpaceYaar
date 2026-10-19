@@ -143,7 +143,7 @@ export function RazorpayCheckoutButton({
 
   return (
     <div>
-      <button type="button" onClick={() => void startCheckout()} disabled={disabled || isPaying || paid || !isReady}>
+      <button className="renter-pay-button" type="button" onClick={() => void startCheckout()} disabled={disabled || isPaying || paid || !isReady}>
         {paid ? "Paid" : isPaying ? "Opening checkout…" : isReady ? "Pay securely" : "Loading checkout…"}
       </button>
       {error && <p role="alert">{error}</p>}

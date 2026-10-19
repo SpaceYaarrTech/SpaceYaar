@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import { parseListingDraft } from "@/lib/api/listing-input";
 import { createClient } from "@/lib/supabase/server";
 
-const PUBLIC_COLUMNS = "id, title, description, property_type, area_value, area_unit, price_amount, price_model, city, pincode, amenities, latitude, longitude, listing_photos(id, storage_path, label, position)";
+const PUBLIC_COLUMNS = "id, title, description, property_type, area_value, area_unit, price_amount, price_model, min_booking_days, city, state, pincode, amenities, latitude, longitude, listing_photos(id, storage_path, label, position)";
 
 export async function GET(_request: Request, context: { params: Promise<{ id: string }> }) {
   try {

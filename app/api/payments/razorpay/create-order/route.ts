@@ -1,21 +1,18 @@
 import Razorpay from "razorpay";
 import { NextResponse } from "next/server";
+import { isRecord } from "@/lib/payments/razorpay-security";
 import { createClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 
-type CreateOrderRequest = {
-  bookingId?: unknown;
-};
-
 export async function POST(request: Request) {
-  let body: CreateOrderRequest;
+  let body: unknown;
   try {
-    body = await request.json() as CreateOrderRequest;
+    body = await request.json();
   } catch {
     return NextResponse.json({ error: "Request body must be valid JSON." }, { status: 400 });
   }
 
-  if (typeof body.bookingId !== "string" || !body.bookingId.trim()) {
+  if (!isRecord(body) || typeof body.bookingId !== "string" || !body.bookingId.trim()) {
     return NextResponse.json({ error: "A booking ID is required." }, { status: 400 });
   }
 

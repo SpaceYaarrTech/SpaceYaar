@@ -1,30 +1,20 @@
-import { createHmac, timingSafeEqual } from "node:crypto";
 import { NextResponse } from "next/server";
 import Razorpay from "razorpay";
+import { isRecord, isValidRazorpaySignature } from "@/lib/payments/razorpay-security";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { createClient } from "@/lib/supabase/server";
 
-type VerifyPaymentRequest = {
-  razorpay_order_id?: unknown;
-  razorpay_payment_id?: unknown;
-  razorpay_signature?: unknown;
-};
-
-function isValidSignature(orderId: string, paymentId: string, signature: string, secret: string) {
-  if (!/^[a-f\d]{64}$/i.test(signature)) return false;
-  const expected = createHmac("sha256", secret).update(`${orderId}|${paymentId}`).digest();
-  const actual = Buffer.from(signature, "hex");
-  return actual.length === expected.length && timingSafeEqual(actual, expected);
-}
-
 export async function POST(request: Request) {
-  let body: VerifyPaymentRequest;
+  let body: unknown;
   try {
-    body = await request.json() as VerifyPaymentRequest;
+    body = await request.json();
   } catch {
     return NextResponse.json({ error: "Request body must be valid JSON." }, { status: 400 });
   }
 
+  if (!isRecord(body)) {
+    return NextResponse.json({ error: "Razorpay payment details are incomplete." }, { status: 400 });
+  }
   const orderId = body.razorpay_order_id;
   const paymentId = body.razorpay_payment_id;
   const signature = body.razorpay_signature;
@@ -37,7 +27,7 @@ export async function POST(request: Request) {
   if (!keyId || !keySecret) {
     return NextResponse.json({ error: "Razorpay is not configured." }, { status: 503 });
   }
-  if (!isValidSignature(orderId, paymentId, signature, keySecret)) {
+  if (!isValidRazorpaySignature(`${orderId}|${paymentId}`, signature, keySecret)) {
     return NextResponse.json({ error: "Razorpay payment signature is invalid." }, { status: 400 });
   }
 

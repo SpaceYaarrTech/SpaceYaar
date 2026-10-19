@@ -5336,6 +5336,221 @@ a { color: inherit; text-decoration: none; }
   cursor: not-allowed;
 }
 
+.renter-flow-page {
+  position: relative;
+  height: 100svh;
+  overflow-x: hidden;
+  overflow-y: auto;
+  padding: 24px 18px calc(88px + env(safe-area-inset-bottom));
+  background: #fff;
+  color: #252326;
+  scrollbar-width: none;
+  -webkit-overflow-scrolling: touch;
+}
+
+.renter-flow-page::-webkit-scrollbar { display: none; }
+
+.renter-page-header { margin: 0 0 16px; }
+.renter-page-header h1 { margin: 0; font-size: 20px; line-height: 1.25; font-weight: 650; letter-spacing: -.035em; }
+
+.renter-bottom-nav {
+  position: fixed;
+  z-index: 900;
+  left: 50%;
+  bottom: 0;
+  display: grid;
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+  width: min(100%, 430px);
+  min-height: 62px;
+  padding: 7px 8px calc(7px + env(safe-area-inset-bottom));
+  transform: translateX(-50%);
+  border-top: 1px solid #e9e7e7;
+  background: rgba(255, 255, 255, .97);
+  backdrop-filter: blur(10px);
+}
+
+.renter-bottom-nav-item {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 3px;
+  color: #77757a;
+  font-size: 10px;
+  font-weight: 500;
+}
+
+.renter-bottom-nav-item.is-active { color: #ff1d12; font-weight: 650; }
+.renter-bottom-nav-item svg { flex: 0 0 auto; }
+
+.renter-search-input {
+  display: flex;
+  height: 43px;
+  align-items: center;
+  gap: 10px;
+  padding: 0 12px;
+  border: 1px solid #dedce0;
+  border-radius: 24px;
+  color: #70617f;
+}
+
+.renter-search-input input { width: 100%; min-width: 0; border: 0; outline: 0; background: transparent; color: #26242a; font-size: 12px; }
+.renter-search-input input::placeholder { color: #a09ca4; }
+.renter-search-input > button,
+.renter-filter-panel-heading button { display: grid; flex: 0 0 auto; place-items: center; border: 0; background: transparent; color: #7652a4; }
+
+.renter-filter-row { display: flex; min-height: 40px; align-items: center; gap: 6px; overflow-x: auto; margin-top: 9px; scrollbar-width: none; }
+.renter-filter-row::-webkit-scrollbar { display: none; }
+.renter-filter-chip { display: inline-flex; flex: 0 0 auto; align-items: center; gap: 4px; min-height: 25px; padding: 0 9px; border: 0; border-radius: 14px; background: #eee9fb; color: #6e4b9b; font-size: 10px; font-weight: 600; }
+.renter-clear-filters { flex: 0 0 auto; margin-left: auto; border: 0; background: transparent; color: #3c3940; font-size: 10px; font-weight: 600; }
+.renter-clear-filters:disabled { opacity: .5; }
+
+.renter-filter-panel { margin: 5px 0 12px; padding: 14px; border: 1px solid #e5e1e9; border-radius: 14px; background: #fff; }
+.renter-filter-panel-heading { display: flex; align-items: center; justify-content: space-between; margin-bottom: 12px; font-size: 13px; }
+.renter-filter-panel-heading button { padding: 2px; }
+.renter-filter-fields { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; }
+.renter-filter-fields label { display: grid; gap: 5px; color: #6b6670; font-size: 10px; }
+.renter-filter-fields input { width: 100%; height: 36px; padding: 0 9px; border: 1px solid #e1dde4; border-radius: 8px; color: #27242b; }
+.renter-filter-fields label:last-child { grid-column: 1 / -1; }
+.renter-radius-filter { display: flex; align-items: center; gap: 7px; margin-top: 12px; color: #49444d; font-size: 11px; }
+.renter-radius-filter input { accent-color: #ff1d12; }
+.renter-filter-hint { margin: 7px 0 0; color: #84798c; font-size: 10px; }
+
+.renter-results-heading { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin: 12px 0 10px; }
+.renter-results-heading > strong { font-size: 13px; font-weight: 650; }
+.renter-sort-control { display: inline-flex; align-items: center; gap: 4px; min-width: 0; padding: 5px 8px; border: 1px solid #e5e2e5; border-radius: 8px; color: #49454c; font-size: 10px; }
+.renter-sort-control > svg { color: #7552a4; }
+.renter-sort-control select { max-width: 118px; border: 0; outline: 0; background: transparent; color: #353138; font-size: 10px; }
+
+.renter-map-wrap { position: relative; height: 210px; overflow: hidden; border: 1px solid #e4e1e4; border-radius: 13px; background: #eaf0ec; }
+.renter-results-map { width: 100%; height: 100%; }
+.renter-map-controls { position: absolute; z-index: 450; top: 10px; right: 10px; display: flex; flex-direction: column; gap: 5px; }
+.renter-map-controls button { display: grid; width: 32px; height: 32px; place-items: center; border: 1px solid #e4e0e1; border-radius: 9px; background: #fff; color: #343038; box-shadow: 0 2px 6px #00000012; }
+.renter-map-error { position: absolute; right: 48px; bottom: 8px; max-width: 70%; margin: 0; padding: 6px 8px; border-radius: 7px; background: #fff; color: #9e2d28; font-size: 10px; }
+.renter-map-empty { position: absolute; left: 50%; top: 50%; max-width: 75%; margin: 0; padding: 7px 9px; transform: translate(-50%, -50%); border-radius: 8px; background: #ffffffdd; color: #625d65; text-align: center; font-size: 10px; pointer-events: none; }
+.renter-map-marker { border: 0; background: transparent; }
+.renter-map-pin { position: relative; display: block; width: 19px; height: 19px; border: 3px solid #fff; border-radius: 50% 50% 50% 3px; transform: rotate(-45deg); background: #ff2419; box-shadow: 0 2px 6px #0004; }
+.renter-map-pin.is-selected { background: #6f49a2; transform: rotate(-45deg) scale(1.25); }
+
+.renter-listing-stack { display: grid; gap: 10px; margin-top: 12px; }
+.renter-listing-stack > div { border-radius: 12px; }
+.renter-listing-stack > div.is-map-selected { outline: 2px solid #ff756c; outline-offset: 1px; }
+.renter-listing-card { display: flex; min-height: 112px; overflow: hidden; border: 1px solid #e7e4e7; border-radius: 12px; background: #fff; }
+.renter-listing-image { position: relative; display: block; flex: 0 0 31%; min-height: 110px; background: #f0eeec; }
+.renter-listing-image > img { object-fit: cover; }
+.renter-listing-image > span:not(.renter-instant-badge) { display: grid; height: 100%; place-items: center; color: #89838c; font-size: 10px; }
+.renter-instant-badge { position: absolute; left: 6px; top: 6px; display: inline-flex; align-items: center; gap: 3px; padding: 4px 6px; border-radius: 10px; background: #d8f5ef; color: #138c7b; font-size: 8px; font-weight: 700; }
+.renter-listing-content { display: flex; min-width: 0; flex: 1; flex-direction: column; padding: 9px 9px 8px 10px; }
+.renter-listing-heading { display: flex; min-width: 0; align-items: flex-start; justify-content: space-between; gap: 4px; }
+.renter-listing-title { display: -webkit-box; overflow: hidden; color: #252229; font-size: 12px; font-weight: 650; line-height: 1.3; -webkit-box-orient: vertical; -webkit-line-clamp: 2; }
+.renter-heart-button { display: grid; flex: 0 0 25px; width: 25px; height: 25px; place-items: center; margin: -4px -4px 0 0; border: 0; background: transparent; color: #8a858c; }
+.renter-heart-button.is-saved { color: #ff1d12; }
+.renter-listing-meta,.renter-listing-place { overflow: hidden; margin: 4px 0 0; color: #77727b; font-size: 9px; line-height: 1.35; text-overflow: ellipsis; white-space: nowrap; }
+.renter-listing-price { display: flex; align-items: baseline; gap: 3px; margin-top: auto; padding-top: 6px; color: #ff1d12; }
+.renter-listing-price strong { font-size: 14px; font-weight: 700; }
+.renter-listing-price span { color: #87828a; font-size: 9px; }
+.renter-flow-state,.renter-flow-empty,.renter-flow-error { padding: 15px 12px; border-radius: 10px; text-align: center; font-size: 12px; }
+.renter-flow-state,.renter-flow-empty { color: #77727b; }
+.renter-flow-empty { border: 1px solid #ebe8ec; background: #fff; }
+.renter-flow-error { border: 1px solid #f3c4c0; background: #fff7f6; color: #aa3028; }
+
+.renter-segmented-control { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 3px; padding: 3px; border: 1px solid #e4e0e4; border-radius: 12px; background: #fff; }
+.renter-segmented-control button { min-height: 35px; border: 0; border-radius: 9px; background: transparent; color: #4b474e; font-size: 12px; font-weight: 550; }
+.renter-segmented-control button.is-active { background: #ff1d12; color: #fff; }
+.renter-collections-section { margin-top: 20px; }
+.renter-section-heading { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-bottom: 10px; }
+.renter-section-heading h2 { margin: 0; font-size: 15px; line-height: 1.3; font-weight: 650; }
+.renter-collection-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 9px; }
+.renter-collection-card { display: flex; min-height: 91px; flex-direction: column; align-items: flex-start; gap: 5px; padding: 12px; border: 1px solid #e6e2e7; border-radius: 12px; background: #fff; color: #4d4655; text-align: left; }
+.renter-collection-card.is-selected { border-color: #e0d7f2; background: #f2edfc; color: #704da0; }
+.renter-collection-card strong { max-width: 100%; overflow: hidden; font-size: 11px; font-weight: 650; text-overflow: ellipsis; white-space: nowrap; }
+.renter-collection-card span { color: #817a86; font-size: 9px; }
+.renter-collection-empty { margin: 0; font-size: 11px; }
+.renter-saved-list-section { margin-top: 21px; }
+.renter-saved-list-heading { align-items: center; }
+.renter-saved-list-heading .renter-sort-control { padding: 4px 6px; }
+
+.renter-booking-tabs { grid-template-columns: repeat(4, minmax(0, 1fr)); }
+.renter-booking-tabs button { min-height: 34px; padding: 0 4px; font-size: 10px; white-space: nowrap; }
+.renter-booking-summaries { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 7px; margin: 14px 0; }
+.renter-booking-summaries span { display: flex; min-height: 34px; align-items: center; justify-content: center; gap: 4px; border-radius: 9px; font-size: 10px; font-weight: 550; }
+.renter-booking-summaries strong { font-size: 12px; }
+.summary-active { background: #fff0ef; color: #e43b33; }
+.summary-upcoming { background: #f1ebfa; color: #7650a2; }
+.summary-past { background: #e5f7f4; color: #168d7c; }
+.renter-booking-list { display: grid; gap: 11px; }
+.renter-booking-card { padding: 12px; border: 1px solid #e6e3e6; border-radius: 13px; background: #fff; }
+.renter-booking-card.is-active-booking { border: 1.5px solid #ff291f; }
+.renter-booking-card-top { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-bottom: 10px; }
+.renter-booking-status { display: inline-flex; min-height: 21px; align-items: center; gap: 5px; padding: 3px 8px; border-radius: 12px; background: #f0eff0; color: #615d64; font-size: 9px; font-weight: 650; }
+.renter-booking-status.is-active { background: #fff0ef; color: #e82d23; }
+.renter-booking-status.is-active span { width: 6px; height: 6px; border-radius: 50%; background: currentColor; }
+.renter-booking-status.is-upcoming,.renter-booking-status.is-pending { background: #f1ebfa; color: #7650a2; }
+.renter-booking-status.is-past { background: #e5f7f4; color: #168d7c; }
+.renter-booking-status.is-cancelled { background: #f3f1f2; color: #68636b; }
+.renter-booking-id { color: #858089; font-size: 9px; }
+.renter-booking-main { display: flex; gap: 10px; }
+.renter-booking-image { position: relative; display: grid; width: 75px; height: 75px; flex: 0 0 75px; place-items: center; overflow: hidden; border-radius: 9px; background: #f0eeec; color: #8d8790; }
+.renter-booking-image img { object-fit: cover; }
+.renter-booking-info { min-width: 0; flex: 1; }
+.renter-booking-info h3 { margin: 0 0 4px; overflow: hidden; color: #28252b; font-size: 12px; font-weight: 650; line-height: 1.3; text-overflow: ellipsis; }
+.renter-booking-info p { margin: 3px 0; color: #7c7780; font-size: 9px; line-height: 1.35; }
+.renter-booking-amount { display: block; margin-top: 5px; color: #ff1d12; font-size: 13px; }
+.renter-booking-amount small { color: #77727b; font-size: 9px; font-weight: 500; }
+.renter-booking-progress { margin-top: 12px; padding-top: 10px; border-top: 1px solid #efedef; }
+.renter-progress-heading,.renter-progress-caption { display: flex; align-items: center; justify-content: space-between; gap: 8px; color: #55515a; font-size: 10px; }
+.renter-progress-heading strong { color: #f02e23; font-size: 10px; }
+.renter-progress-track { height: 6px; overflow: hidden; margin-top: 9px; border-radius: 8px; background: #eee; }
+.renter-progress-track span { display: block; height: 100%; border-radius: inherit; background: #ff271e; }
+.renter-progress-caption { margin-top: 5px; color: #868089; font-size: 9px; }
+.renter-booking-warning { margin: 8px 0 0; color: #8b6b26; font-size: 10px; }
+.renter-booking-actions { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 12px; }
+.renter-booking-actions > button,.renter-call-owner,.renter-chat-owner { display: inline-flex; min-height: 36px; flex: 1 1 100px; align-items: center; justify-content: center; gap: 6px; padding: 0 10px; border-radius: 9px; font-size: 10px; font-weight: 600; }
+.renter-call-owner { border: 1px solid #ddd9dd; background: #fff; color: #454149; }
+.renter-chat-owner { border: 1px solid #ff1d12; background: #ff1d12; color: #fff; }
+.renter-pay-button { min-height: 36px; padding: 0 12px; border: 1px solid #e2d8f1; border-radius: 9px; background: #f1ebfa; color: #704da0; font-size: 10px; font-weight: 650; }
+.renter-pay-button:disabled { opacity: .6; cursor: not-allowed; }
+.renter-booking-actions > div { flex-basis: 100%; }
+.renter-booking-actions > div > p { margin: 5px 0 0; font-size: 10px; }
+.renter-payment-confirmed { display: inline-flex; align-items: center; gap: 4px; color: #168d7c; font-size: 10px; font-weight: 650; }
+.renter-rebook-link { display: inline-flex; min-height: 33px; align-items: center; gap: 4px; margin-left: auto; padding: 0 7px; color: #7650a2; font-size: 10px; font-weight: 650; }
+.renter-rebook-link svg { transform: rotate(45deg); }
+.renter-booking-inline-error { margin: 8px 0 0; color: #aa3028; font-size: 10px; }
+.renter-booking-section-label { display: flex; align-items: center; gap: 5px; margin: 2px 0 -2px; color: #7650a2; font-size: 11px; font-weight: 650; }
+.renter-booking-card .razorpay-checkout-placeholder { display: none; }
+
+.renter-detail-toolbar { display: flex; align-items: center; justify-content: space-between; margin: -7px 0 14px; }
+.renter-detail-toolbar button { display: grid; width: 34px; height: 34px; place-items: center; border: 0; border-radius: 50%; background: #f5f3f4; color: #48434b; }
+.renter-detail-toolbar button[aria-pressed="true"] { color: #ff1d12; }
+.renter-detail-toolbar a { color: #6f4b9e; font-size: 11px; font-weight: 600; }
+.renter-detail-image { position: relative; height: 220px; overflow: hidden; border-radius: 14px; background: #f0eeec; }
+.renter-detail-image img { object-fit: cover; }
+.renter-detail-copy { padding: 17px 2px 10px; }
+.renter-detail-verified,.renter-detail-location { display: inline-flex; align-items: center; gap: 5px; color: #168d7c; font-size: 10px; font-weight: 600; }
+.renter-detail-copy h1 { margin: 9px 0 5px; font-size: 20px; line-height: 1.25; }
+.renter-detail-location { color: #77727b; font-weight: 500; }
+.renter-detail-description { margin: 13px 0; color: #65616a; font-size: 12px; line-height: 1.5; }
+.renter-detail-stats { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 6px; padding: 12px 0; border-top: 1px solid #eee; border-bottom: 1px solid #eee; }
+.renter-detail-stats span { display: grid; gap: 4px; color: #858089; font-size: 9px; }
+.renter-detail-stats strong { color: #332f36; font-size: 10px; }
+.renter-detail-amenities { margin-top: 15px; }
+.renter-detail-amenities h2 { margin: 0 0 8px; font-size: 14px; }
+.renter-detail-amenities div { display: flex; flex-wrap: wrap; gap: 6px; }
+.renter-detail-amenities span { padding: 6px 8px; border-radius: 16px; background: #f2edfc; color: #704da0; font-size: 10px; }
+.renter-detail-book { width: 100%; min-height: 44px; margin-top: 18px; border: 0; border-radius: 11px; background: #ff1d12; color: #fff; font-size: 13px; font-weight: 650; }
+.renter-detail-back { display: inline-flex; align-items: center; gap: 5px; color: #704da0; }
+.renter-profile-placeholder { display: grid; min-height: 70svh; align-content: center; justify-items: center; color: #77727b; }
+.renter-profile-placeholder h1 { margin: 0; color: #252326; font-size: 26px; }
+.renter-profile-placeholder p { font-size: 13px; }
+
+@media (max-width: 360px) {
+  .renter-flow-page { padding-inline: 13px; }
+  .renter-listing-image { flex-basis: 29%; }
+  .renter-listing-content { padding-left: 8px; padding-right: 7px; }
+  .renter-booking-tabs button { font-size: 9px; }
+}
+
 @media (min-width: 820px) {
   .app-shell {
     max-width: 430px;

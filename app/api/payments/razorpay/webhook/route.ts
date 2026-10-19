@@ -1,21 +1,10 @@
-import { createHmac, timingSafeEqual } from "node:crypto";
 import { NextResponse } from "next/server";
+import {
+  isRecord,
+  isValidRazorpaySignature,
+  parseRazorpayWebhookPayload,
+} from "@/lib/payments/razorpay-security";
 import { createAdminClient } from "@/lib/supabase/admin";
-
-type RazorpayWebhookPayload = {
-  event?: string;
-  payload?: {
-    payment?: { entity?: { id?: string; order_id?: string } };
-    subscription?: { entity?: Record<string, unknown> };
-  };
-};
-
-function isValidWebhookSignature(rawBody: string, signature: string, secret: string) {
-  if (!/^[a-f\d]{64}$/i.test(signature)) return false;
-  const expected = createHmac("sha256", secret).update(rawBody).digest();
-  const actual = Buffer.from(signature, "hex");
-  return actual.length === expected.length && timingSafeEqual(actual, expected);
-}
 
 export async function POST(request: Request) {
   const secret = process.env.RAZORPAY_WEBHOOK_SECRET;
@@ -25,24 +14,36 @@ export async function POST(request: Request) {
 
   const rawBody = await request.text();
   const signature = request.headers.get("x-razorpay-signature") ?? "";
-  if (!isValidWebhookSignature(rawBody, signature, secret)) {
+  if (!isValidRazorpaySignature(rawBody, signature, secret)) {
     return NextResponse.json({ error: "Invalid Razorpay webhook signature." }, { status: 400 });
   }
 
-  let payload: RazorpayWebhookPayload;
+  let parsedPayload: unknown;
   try {
-    payload = JSON.parse(rawBody) as RazorpayWebhookPayload;
+    parsedPayload = JSON.parse(rawBody);
   } catch {
     return NextResponse.json({ error: "Webhook body must be valid JSON." }, { status: 400 });
   }
+  if (!isRecord(parsedPayload)) {
+    return NextResponse.json({ error: "Webhook body must be a JSON object." }, { status: 400 });
+  }
+  const payload = parseRazorpayWebhookPayload(parsedPayload);
+  if (!payload) {
+    return NextResponse.json({ error: "Webhook event name is required." }, { status: 400 });
+  }
 
   const eventId = request.headers.get("x-razorpay-event-id");
-  if (!eventId || !payload.event) {
-    return NextResponse.json({ error: "Webhook event ID and event name are required." }, { status: 400 });
+  if (!eventId) {
+    return NextResponse.json({ error: "Webhook event ID is required." }, { status: 400 });
   }
 
   try {
     const admin = createAdminClient();
+    const rawPayload = isRecord(parsedPayload.payload) ? parsedPayload.payload : undefined;
+    const rawSubscription = rawPayload && isRecord(rawPayload.subscription)
+      && isRecord(rawPayload.subscription.entity)
+      ? rawPayload.subscription.entity
+      : undefined;
     const payment = payload.payload?.payment?.entity;
     if (payment?.order_id && (payload.event === "payment.captured" || payload.event === "payment.failed")) {
       const updates = payload.event === "payment.captured"
@@ -83,7 +84,7 @@ export async function POST(request: Request) {
           ended_at: typeof subscription.ended_at === "number"
             ? new Date(subscription.ended_at * 1000).toISOString()
             : null,
-          razorpay_payload: subscription,
+          razorpay_payload: rawSubscription ?? subscription,
           updated_at: new Date().toISOString(),
         }, { onConflict: "razorpay_subscription_id" });
       if (error) {
@@ -94,7 +95,7 @@ export async function POST(request: Request) {
 
     const { error: insertError } = await admin
       .from("razorpay_webhooks")
-      .insert({ event_id: eventId, event: payload.event, payload });
+      .insert({ event_id: eventId, event: payload.event, payload: parsedPayload });
     if (insertError && insertError.code !== "23505") {
       console.error("Could not store Razorpay webhook:", insertError.message);
       return NextResponse.json({ error: "Could not record webhook event." }, { status: 500 });

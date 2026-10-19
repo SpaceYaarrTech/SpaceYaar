@@ -6,7 +6,8 @@
     "dev": "next dev",
     "build": "next build",
     "lint": "eslint .",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "test:payments": "node --experimental-strip-types --test tests/payments/*.test.mjs"
   },
   "dependencies": {
     "@supabase/ssr": "^0.12.7",

@@ -10,10 +10,24 @@ export async function GET() {
 
     const { data, error } = await supabase
       .from("bookings")
-      .select("id, listing_id, renter_id, owner_id, start_date, end_date, message, status, quoted_total, created_at, listings(title, city, property_type)")
+      .select("id, listing_id, renter_id, owner_id, start_date, end_date, message, status, quoted_total, created_at, listings(id, title, city, state, property_type, listing_photos(storage_path, position))")
       .order("created_at", { ascending: false });
     if (error) return NextResponse.json({ error: error.message }, { status: 400 });
-    const bookings = data ?? [];
+    const bookings = (data ?? []).map((booking) => {
+      const listing = Array.isArray(booking.listings) ? booking.listings[0] : booking.listings;
+      return {
+        ...booking,
+        listings: listing ? {
+          ...listing,
+          listing_photos: [...listing.listing_photos]
+            .sort((first, second) => first.position - second.position)
+            .map((photo) => ({
+              ...photo,
+              image_url: supabase.storage.from("listing-photos").getPublicUrl(photo.storage_path).data.publicUrl,
+            })),
+        } : null,
+      };
+    });
     const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
     if (!serviceRoleKey || bookings.length === 0) {
       return NextResponse.json({ bookings: bookings.map((booking) => ({ ...booking, payment_status: null })) });

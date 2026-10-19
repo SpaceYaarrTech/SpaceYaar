@@ -2,11 +2,8 @@
 
 import Image from "next/image";
 import { useRouter } from "next/navigation";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import {
-  Clock3,
-  Heart,
-  House,
   MapPin,
   Search,
   ShieldCheck,
@@ -15,6 +12,7 @@ import {
   Zap,
 } from "lucide-react";
 import { LISTINGS, type Listing } from "@/data/listings";
+import { RenterBottomNavigation } from "@/components/renter/RenterBottomNavigation";
 import { getSelectedRole, setSelectedRole } from "@/lib/roles/role-storage";
 import type { UserRole } from "@/types/roles";
 
@@ -182,38 +180,6 @@ function ListingCard({
   );
 }
 
-function BottomNavigation({ activeTab = "Home" }: { activeTab?: string }) {
-  const router = useRouter();
-  const tabs = [
-    { label: "Home", icon: House, href: "/renter" },
-    { label: "Search", icon: Search, href: "/search" },
-    { label: "Saved", icon: Heart, href: "/saved" },
-    { label: "History", icon: Clock3, href: "/history" },
-    { label: "Profile", icon: UserRound, href: "/profile" },
-  ];
-
-  return (
-    <nav className="bottom-nav" aria-label="Main navigation">
-      {tabs.map(({ label, icon: Icon, href }) => {
-        const isActive = activeTab === label;
-        return (
-          <button
-            key={label}
-            type="button"
-            className={isActive ? "bottom-nav-item bottom-nav-item--active" : "bottom-nav-item"}
-            aria-label={label}
-            aria-pressed={isActive}
-            onClick={() => router.push(href)}
-          >
-            <Icon size={16} strokeWidth={2} />
-            <span>{label}</span>
-          </button>
-        );
-      })}
-    </nav>
-  );
-}
-
 type RenterHomeProps = {
   onRoleChange?: (nextRole: UserRole) => void;
 };
@@ -233,6 +199,7 @@ export function RenterHome({ onRoleChange }: RenterHomeProps = {}) {
   const [bookingError, setBookingError] = useState("");
   const [bookingSuccess, setBookingSuccess] = useState("");
   const [isSubmittingBooking, setIsSubmittingBooking] = useState(false);
+  const handledRebookId = useRef<string | null>(null);
 
   useEffect(() => {
     const storedRole = getSelectedRole();
@@ -301,6 +268,25 @@ export function RenterHome({ onRoleChange }: RenterHomeProps = {}) {
     setBookingError("");
     setBookingSuccess("");
   };
+
+  useEffect(() => {
+    if (isLoadingListings || !listings.length) return;
+    const listingId = new URLSearchParams(window.location.search).get("bookListing");
+    if (!listingId || handledRebookId.current === listingId) return;
+    const listing = listings.find((item) => item.id === listingId);
+    if (!listing) return;
+    handledRebookId.current = listingId;
+    const startDate = new Date();
+    startDate.setDate(startDate.getDate() + 1);
+    const endDate = new Date(startDate);
+    endDate.setDate(endDate.getDate() + listing.minimumBookingDays);
+    setBookingListing(listing);
+    setBookingStartDate(formatDateInput(startDate));
+    setBookingEndDate(formatDateInput(endDate));
+    setBookingNote("");
+    setBookingError("");
+    setBookingSuccess("");
+  }, [isLoadingListings, listings]);
 
   const submitBookingRequest = async (event: React.FormEvent<HTMLFormElement>) => {
     event.preventDefault();
@@ -544,7 +530,7 @@ export function RenterHome({ onRoleChange }: RenterHomeProps = {}) {
         </div>
       )}
 
-      <BottomNavigation activeTab="Home" />
+      <RenterBottomNavigation />
     </main>
   );
 }

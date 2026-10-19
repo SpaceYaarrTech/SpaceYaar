@@ -41,6 +41,8 @@ set status = 'published'
 where id = 'LISTING_UUID' and status = 'pending_review';
 ```
 
+Renter Search and Saved Spaces use published listings and the existing `favorites` table. Saved collection cards are derived from each renter's saved listings by city and property type; there is no separate user-created collection feature. Map markers are only shown for listings with stored latitude and longitude. Booking history uses canonical booking statuses and accepted booking dates; calling an owner requires the server-only service-role key. The app does not yet have an in-app messaging/conversation backend, so the Chat Owner action reports that messaging is unavailable instead of creating a fake conversation.
+
 Booking requests and Razorpay Checkout for owner-accepted bookings are implemented. Apply `supabase/migrations/20261019000000_razorpay_payments.sql` after the existing migrations. Payment, webhook, and subscription tables are only writable by the Supabase service role; never expose that key to browser code.
 
 Set the following server environment variables in `.env.local` and in the production deployment:

@@ -9,7 +9,7 @@ export async function GET() {
 
     const { data, error } = await supabase
       .from("favorites")
-      .select("listing_id, created_at, listings(id, title, description, property_type, area_value, area_unit, price_amount, price_model, city, amenities, latitude, longitude, listing_photos(storage_path, label, position))")
+      .select("listing_id, created_at, listings(id, title, description, property_type, area_value, area_unit, price_amount, price_model, city, state, pincode, amenities, latitude, longitude, listing_photos(storage_path, label, position))")
       .eq("renter_id", user.id)
       .order("created_at", { ascending: false });
     if (error) return NextResponse.json({ error: error.message }, { status: 400 });
