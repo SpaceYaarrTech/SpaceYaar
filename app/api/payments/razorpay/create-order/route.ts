@@ -16,12 +16,6 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: "A booking ID is required." }, { status: 400 });
   }
 
-  const keyId = process.env.RAZORPAY_KEY_ID;
-  const keySecret = process.env.RAZORPAY_KEY_SECRET;
-  if (!keyId || !keySecret) {
-    return NextResponse.json({ error: "Razorpay is not configured." }, { status: 503 });
-  }
-
   try {
     const supabase = await createClient();
     const { data: { user }, error: authError } = await supabase.auth.getUser();
@@ -46,9 +40,15 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: "Payment is available after the owner accepts the booking." }, { status: 409 });
     }
 
+    const keyId = process.env.RAZORPAY_KEY_ID;
+    const keySecret = process.env.RAZORPAY_KEY_SECRET;
+    if (!keyId || !keySecret) {
+      return NextResponse.json({ error: "Razorpay is not configured." }, { status: 503 });
+    }
+
     const amountPaise = Math.round(Number(booking.quoted_total) * 100);
-    if (!Number.isSafeInteger(amountPaise) || amountPaise <= 0) {
-      return NextResponse.json({ error: "This booking has an invalid payment amount." }, { status: 400 });
+    if (!Number.isSafeInteger(amountPaise) || amountPaise < 100) {
+      return NextResponse.json({ error: "This booking must total at least INR 1.00 to be paid online." }, { status: 400 });
     }
 
     const admin = createAdminClient();

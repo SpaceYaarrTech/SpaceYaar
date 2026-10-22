@@ -22,20 +22,20 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: "Razorpay payment details are incomplete." }, { status: 400 });
   }
 
-  const keySecret = process.env.RAZORPAY_KEY_SECRET;
-  const keyId = process.env.RAZORPAY_KEY_ID;
-  if (!keyId || !keySecret) {
-    return NextResponse.json({ error: "Razorpay is not configured." }, { status: 503 });
-  }
-  if (!isValidRazorpaySignature(`${orderId}|${paymentId}`, signature, keySecret)) {
-    return NextResponse.json({ error: "Razorpay payment signature is invalid." }, { status: 400 });
-  }
-
   try {
     const supabase = await createClient();
     const { data: { user }, error: authError } = await supabase.auth.getUser();
     if (authError || !user) {
       return NextResponse.json({ error: "Sign in to verify this payment." }, { status: 401 });
+    }
+
+    const keySecret = process.env.RAZORPAY_KEY_SECRET;
+    const keyId = process.env.RAZORPAY_KEY_ID;
+    if (!keyId || !keySecret) {
+      return NextResponse.json({ error: "Razorpay is not configured." }, { status: 503 });
+    }
+    if (!isValidRazorpaySignature(`${orderId}|${paymentId}`, signature, keySecret)) {
+      return NextResponse.json({ error: "Razorpay payment signature is invalid." }, { status: 400 });
     }
 
     const admin = createAdminClient();

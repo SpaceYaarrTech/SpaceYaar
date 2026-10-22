@@ -14,6 +14,12 @@ type RazorpayPaymentResponse = {
   razorpay_signature: string;
 };
 
+type RazorpayPaymentFailure = {
+  error?: {
+    description?: string;
+  };
+};
+
 type RazorpayOptions = {
   key: string;
   amount: number;
@@ -26,7 +32,10 @@ type RazorpayOptions = {
   theme: { color: string };
 };
 
-type RazorpayInstance = { open: () => void };
+type RazorpayInstance = {
+  open: () => void;
+  on: (event: "payment.failed", handler: (response: RazorpayPaymentFailure) => void) => void;
+};
 type RazorpayConstructor = new (options: RazorpayOptions) => RazorpayInstance;
 
 declare global {
@@ -133,6 +142,10 @@ export function RazorpayCheckoutButton({
             })
             .finally(() => setIsPaying(false));
         },
+      });
+      checkout.on("payment.failed", (response) => {
+        setError(response.error?.description || "Payment failed. Please try again.");
+        setIsPaying(false);
       });
       checkout.open();
     } catch (cause) {
