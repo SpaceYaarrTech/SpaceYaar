@@ -3,15 +3,8 @@
 import { useEffect, useState } from "react";
 import Image from "next/image";
 import { useRouter } from "next/navigation";
-import { AnimatePresence, motion, useReducedMotion, type PanInfo } from "motion/react";
-
-type Slide = { image: string; alt: string };
-
-const slides: Slide[] = [
-  { image: "https://pyhpkmxtsvsramxrbsyc.supabase.co/storage/v1/object/public/app-images/2.png", alt: "SpaceYaar onboarding screen about finding nearby storage" },
-  { image: "https://pyhpkmxtsvsramxrbsyc.supabase.co/storage/v1/object/public/app-images/3.png", alt: "SpaceYaar onboarding screen about verified and secure bookings" },
-  { image: "https://pyhpkmxtsvsramxrbsyc.supabase.co/storage/v1/object/public/app-images/4.png", alt: "SpaceYaar onboarding screen about growing a business with flexible storage" },
-];
+import { motion, useReducedMotion, type PanInfo } from "motion/react";
+import { onboardingImages as slides } from "@/lib/app-images";
 
 function wrapIndex(index: number) { return (index + slides.length) % slides.length; }
 
@@ -20,7 +13,6 @@ export function OnboardingCarousel() {
   const prefersReducedMotion = useReducedMotion();
   const [activeIndex, setActiveIndex] = useState(0);
   const [direction, setDirection] = useState(1);
-  const slide = slides[activeIndex];
 
   const goTo = (nextIndex: number, nextDirection = nextIndex >= activeIndex ? 1 : -1) => {
     setDirection(nextDirection);
@@ -48,11 +40,20 @@ export function OnboardingCarousel() {
   return (
     <main className="cinematic-onboarding" aria-label="SpaceYaar onboarding">
       <motion.div className="cinematic-backdrop" drag="x" dragConstraints={{ left: 0, right: 0 }} dragElastic={0.1} onDragEnd={handleDragEnd}>
-        <AnimatePresence custom={direction} mode="wait">
-          <motion.div key={activeIndex} className="cinematic-image" custom={direction} variants={variants} initial="enter" animate="center" exit="exit" transition={{ duration: prefersReducedMotion ? 0 : 0.55, ease: [0.22, 1, 0.36, 1] }}>
-            <Image src={slide.image} alt={slide.alt} fill priority={activeIndex === 0} sizes="100vw" />
+        {slides.map((item, index) => (
+          <motion.div
+            key={item.image}
+            className="cinematic-image"
+            custom={direction}
+            variants={variants}
+            initial={index === 0 ? "center" : "exit"}
+            animate={index === activeIndex ? "center" : "exit"}
+            transition={{ duration: prefersReducedMotion ? 0 : 0.55, ease: [0.22, 1, 0.36, 1] }}
+            style={{ zIndex: index === activeIndex ? 1 : 0 }}
+          >
+            <Image src={item.image} alt={item.alt} fill priority={index === 0} loading="eager" fetchPriority={index === activeIndex ? "high" : "low"} sizes="100vw" unoptimized />
           </motion.div>
-        </AnimatePresence>
+        ))}
       </motion.div>
       <header className="cinematic-header"><span className="cinematic-brand"><b>S</b> SPACEYAAR</span></header>
       {activeIndex > 0 && <button className="cinematic-back" type="button" onClick={() => goTo(activeIndex - 1, -1)} aria-label="Go back to previous onboarding step"><span aria-hidden="true">&#8592;</span></button>}

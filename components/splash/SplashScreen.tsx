@@ -4,8 +4,7 @@ import { useEffect } from "react";
 import Image from "next/image";
 import { useRouter } from "next/navigation";
 import { useReducedMotion } from "motion/react";
-
-const splashImage = "https://pyhpkmxtsvsramxrbsyc.supabase.co/storage/v1/object/public/app-images/1.png";
+import { onboardingImages, splashImage } from "@/lib/app-images";
 
 export function SplashScreen() {
   const router = useRouter();
@@ -26,7 +25,12 @@ export function SplashScreen() {
 
   return (
     <main className="splash-screen" aria-label="SpaceYaar">
-      <Image src={splashImage} alt="SpaceYaar, your storage partner" fill priority sizes="100vw" />
+      <Image src={splashImage} alt="SpaceYaar, your storage partner" fill priority sizes="100vw" unoptimized />
+      <div className="splash-preload" aria-hidden="true">
+        {onboardingImages.map((image) => (
+          <Image key={image.image} src={image.image} alt="" width={1} height={1} loading="eager" fetchPriority="low" unoptimized />
+        ))}
+      </div>
     </main>
   );
 }
