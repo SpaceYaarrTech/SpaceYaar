@@ -4,6 +4,7 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { BarChart3, Building2, LayoutDashboard, UserRound, UsersRound } from "lucide-react";
 import type { ReactNode } from "react";
+import { HostNotifications } from "@/components/owner/HostNotifications";
 
 const HOST_TABS = [
   { id: "dashboard", label: "Dashboard", href: "/owner/dashboard", icon: LayoutDashboard },
@@ -19,6 +20,7 @@ export function HostPortal({ children }: { children: ReactNode }) {
 
   return (
     <div className="host-layout">
+      <HostNotifications />
       <main className={`host-main${showTabBar ? "" : " host-main-no-tabs"}`}>{children}</main>
       {showTabBar && <nav className="host-tab-bar" aria-label="Host navigation">
         {HOST_TABS.map(({ id, label, href, icon: Icon }) => {

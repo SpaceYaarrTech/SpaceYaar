@@ -107,6 +107,9 @@ export function HostDashboard() {
               <div>
                 <h2>{hasLiveListing ? "Yaaay! Your Listing is now LIVE!" : bannerListing.status === "rejected" ? "Your listing needs an update" : "Your listing is under review"}</h2>
                 <p>{hasLiveListing ? "Renters can now discover and book your space." : `Current status: ${statusLabel(bannerListing.status).toLowerCase()}. We’ll update you when it changes.`}</p>
+                <Link className="host-status-banner-link" href={`/owner/submitted/${encodeURIComponent(bannerListing.id)}`}>
+                  {bannerListing.status === "published" ? "View your listing progress" : "Track review progress"} →
+                </Link>
               </div>
             </section>
           )}

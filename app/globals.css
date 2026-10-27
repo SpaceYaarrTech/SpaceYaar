@@ -6501,3 +6501,368 @@ a { color: inherit; text-decoration: none; }
     font-size: 16px;
   }
 }
+/* ---------- Admin review portal: stages, lightbox, queue controls ---------- */
+
+.admin-review-header-actions {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+}
+
+.admin-review-refresh {
+  min-height: 36px;
+  padding: 0 13px;
+  border: 1px solid #d9d5df;
+  border-radius: 9px;
+  background: #fff;
+  color: #33303a;
+  font: inherit;
+  font-size: 13px;
+  font-weight: 650;
+}
+
+.admin-review-refresh:disabled {
+  cursor: not-allowed;
+  opacity: .55;
+}
+
+.admin-review-stages {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin: 14px 0 0;
+}
+
+.admin-review-stage-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 5px 11px;
+  border: 1px solid #e7e4eb;
+  border-radius: 999px;
+  background: #f6f5f8;
+  color: #77727e;
+  font-size: 12px;
+  font-weight: 650;
+}
+
+.admin-review-stage-chip.is-done {
+  border-color: #cfe9d8;
+  background: #e9f7ee;
+  color: #1e7d43;
+}
+
+.admin-review-photo-button {
+  padding: 0;
+  border: 0;
+  border-radius: 10px;
+  background: none;
+  cursor: zoom-in;
+}
+
+.admin-review-photo-button:focus-visible {
+  outline: 2px solid #6530f5;
+  outline-offset: 2px;
+}
+
+.admin-review-stage-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 12px;
+  margin: 16px 0 4px;
+}
+
+.admin-review-stage-actions button {
+  min-height: 42px;
+  padding: 0 15px;
+  border: 1px solid #2f8f55;
+  border-radius: 9px;
+  background: #2f9e5b;
+  color: #fff;
+  font: inherit;
+  font-weight: 650;
+}
+
+.admin-review-stage-actions button:disabled {
+  cursor: not-allowed;
+  opacity: .55;
+}
+
+.admin-review-stage-hint {
+  color: #77727e;
+  font-size: 12.5px;
+}
+
+.admin-lightbox {
+  position: fixed;
+  inset: 0;
+  z-index: 60;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 16px;
+  padding: max(20px, env(safe-area-inset-top)) 20px max(20px, env(safe-area-inset-bottom));
+  background: rgba(10, 8, 16, .93);
+}
+
+.admin-lightbox img {
+  max-width: min(100%, 1040px);
+  max-height: 68vh;
+  border-radius: 12px;
+  object-fit: contain;
+}
+
+.admin-lightbox-bar {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  width: min(100%, 1040px);
+  color: #fff;
+}
+
+.admin-lightbox-bar strong {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.admin-lightbox-bar span {
+  color: #b9b4c4;
+  font-size: 13px;
+}
+
+.admin-lightbox-bar button {
+  margin-left: auto;
+  min-height: 38px;
+  padding: 0 14px;
+  border: 1px solid rgba(255, 255, 255, .35);
+  border-radius: 9px;
+  background: rgba(255, 255, 255, .08);
+  color: #fff;
+  font: inherit;
+  font-size: 13px;
+  font-weight: 650;
+}
+
+.admin-lightbox-controls {
+  display: flex;
+  align-items: center;
+  gap: 18px;
+  color: #fff;
+}
+
+.admin-lightbox-controls span {
+  color: #cfcad8;
+  font-size: 13px;
+}
+
+.admin-lightbox-controls button {
+  display: grid;
+  width: 44px;
+  height: 44px;
+  place-items: center;
+  border: 1px solid rgba(255, 255, 255, .35);
+  border-radius: 50%;
+  background: rgba(255, 255, 255, .08);
+  color: #fff;
+  font: inherit;
+  font-size: 18px;
+}
+
+/* ---------- Owner notification bell ---------- */
+
+.host-notifications {
+  position: fixed;
+  right: 16px;
+  bottom: calc(96px + env(safe-area-inset-bottom));
+  z-index: 30;
+}
+
+.host-notifications-trigger {
+  position: relative;
+  display: grid;
+  width: 46px;
+  height: 46px;
+  place-items: center;
+  border: 1px solid #ececef;
+  border-radius: 50%;
+  background: #fff;
+  color: #33303a;
+  box-shadow: 0 10px 26px rgba(20, 16, 32, .16);
+  cursor: pointer;
+}
+
+.host-notifications-badge {
+  position: absolute;
+  top: -5px;
+  right: -5px;
+  display: grid;
+  min-width: 19px;
+  height: 19px;
+  padding: 0 5px;
+  place-items: center;
+  border: 2px solid #fff;
+  border-radius: 999px;
+  background: var(--color-brand);
+  color: #fff;
+  font-size: 10.5px;
+  font-weight: 700;
+}
+
+.host-notifications-panel {
+  position: absolute;
+  right: 0;
+  bottom: 56px;
+  width: min(330px, calc(100vw - 32px));
+  overflow: hidden;
+  border: 1px solid #ececef;
+  border-radius: 16px;
+  background: #fff;
+  box-shadow: 0 20px 48px rgba(20, 16, 32, .2);
+}
+
+.host-notifications-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 13px 15px;
+  border-bottom: 1px solid #f1eff4;
+}
+
+.host-notifications-head strong {
+  font-size: 14px;
+}
+
+.host-notifications-head button {
+  padding: 0;
+  border: 0;
+  background: none;
+  color: #6530f5;
+  font: inherit;
+  font-size: 12.5px;
+  font-weight: 650;
+}
+
+.host-notifications-empty {
+  margin: 0;
+  padding: 18px 15px;
+  color: #77727e;
+  font-size: 13px;
+  line-height: 1.5;
+}
+
+.host-notifications-list {
+  max-height: min(340px, 55vh);
+  overflow-y: auto;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.host-notifications-list li + li {
+  border-top: 1px solid #f4f2f7;
+}
+
+.host-notifications-list a,
+.host-notifications-list button {
+  display: grid;
+  gap: 3px;
+  width: 100%;
+  padding: 12px 15px;
+  border: 0;
+  background: none;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.host-notifications-list li.is-unread {
+  background: #f8f6fd;
+}
+
+.host-notifications-list li.is-unread a,
+.host-notifications-list li.is-unread button {
+  border-left: 3px solid #6530f5;
+}
+
+.host-notifications-list strong {
+  font-size: 13.5px;
+  font-weight: 700;
+}
+
+.host-notifications-list span {
+  display: -webkit-box;
+  overflow: hidden;
+  color: #5d6066;
+  font-size: 12.5px;
+  line-height: 1.45;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+}
+
+.host-notifications-list time {
+  color: #9a95a3;
+  font-size: 11.5px;
+}
+
+/* ---------- Dashboard status banner link ---------- */
+
+.host-status-banner-link {
+  display: inline-block;
+  margin-top: 7px;
+  color: #fff;
+  font-size: 13px;
+  font-weight: 700;
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+
+/* ---------- Owner progress screen: live CTA + rejection reason ---------- */
+
+.listing-live-cta {
+  margin: 16px 0 4px;
+}
+
+.listing-live-cta a {
+  display: grid;
+  min-height: 52px;
+  place-items: center;
+  border-radius: 13px;
+  font-size: 15px;
+}
+
+.listing-rejection-note {
+  display: block;
+  margin: 14px 0;
+  padding: 13px 15px;
+  border: 1px solid #f2c9c9;
+  border-radius: 13px;
+  background: #fdf1f1;
+  color: #8f2020;
+  font-size: 13.5px;
+  line-height: 1.5;
+}
+
+.listing-rejection-note strong {
+  display: block;
+  margin-bottom: 3px;
+}
+
+/* ---------- Listing editor: rejected resubmit ---------- */
+
+.host-editor-actions {
+  display: grid;
+  gap: 10px;
+  margin-top: 14px;
+}
+
+.host-editor-resubmit {
+  border: 1px solid var(--color-brand);
+  background: #fff;
+  color: var(--color-brand-dark);
+}

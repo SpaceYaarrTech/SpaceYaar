@@ -7,11 +7,22 @@ export async function GET() {
     const { data: { user }, error: authError } = await supabase.auth.getUser();
     if (authError || !user) return NextResponse.json({ error: "Sign in to view your listings." }, { status: 401 });
 
-    const { data, error } = await supabase
+    let { data, error } = await supabase
       .from("listings")
-      .select("*, listing_photos(id, storage_path, label, position), listing_documents(id, storage_path, document_type)")
+      .select("*, listing_photos(id, storage_path, label, position), listing_documents(id, storage_path, document_type), listing_review_progress(stage, created_at)")
       .eq("owner_id", user.id)
       .order("created_at", { ascending: false });
+    if (error && error.message.includes("listing_review_progress")) {
+      // The review-progress migration has not been applied yet: fall back to
+      // the previous shape so owners can still load their listings.
+      const fallback = await supabase
+        .from("listings")
+        .select("*, listing_photos(id, storage_path, label, position), listing_documents(id, storage_path, document_type)")
+        .eq("owner_id", user.id)
+        .order("created_at", { ascending: false });
+      data = fallback.data;
+      error = fallback.error;
+    }
     if (error) return NextResponse.json({ error: error.message }, { status: 400 });
 
     const listings = await Promise.all((data ?? []).map(async (listing) => {
@@ -24,6 +35,7 @@ export async function GET() {
 
       return {
         ...listing,
+        review_progress: listing.listing_review_progress ?? [],
         listing_photos: listing.listing_photos.map((photo: { id: string; storage_path: string; label: string; position: number }) => ({
           ...photo,
           image_url: supabase.storage.from("listing-photos").getPublicUrl(photo.storage_path).data.publicUrl,

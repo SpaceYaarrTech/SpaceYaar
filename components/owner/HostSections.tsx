@@ -240,6 +240,7 @@ export function HostListingDetails() {
   const [saving, setSaving] = useState(false);
   const [saveError, setSaveError] = useState("");
   const [saved, setSaved] = useState(false);
+  const [resubmitError, setResubmitError] = useState("");
   const [city, setCity] = useState("");
   const [address, setAddress] = useState("");
   const [description, setDescription] = useState("");
@@ -261,8 +262,8 @@ export function HostListingDetails() {
       : [...current, day]);
   };
 
-  const save = async () => {
-    if (!listing || !canEdit || saving) return;
+  const save = async (): Promise<boolean> => {
+    if (!listing || !canEdit || saving) return false;
     setSaving(true);
     setSaveError("");
     setSaved(false);
@@ -305,8 +306,31 @@ export function HostListingDetails() {
       const result = await response.json() as { error?: string };
       if (!response.ok) throw new Error(result.error || "Could not update this listing.");
       setSaved(true);
+      return true;
     } catch (cause) {
       setSaveError(cause instanceof Error ? cause.message : "Could not update this listing.");
+      return false;
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  // Rejected listings: apply the owner's edits, then send the listing back
+  // into review. The submit route resets the previous round's review stages.
+  const resubmit = async () => {
+    if (!listing || saving) return;
+    setSaved(false);
+    setResubmitError("");
+    const savedOk = await save();
+    if (!savedOk) return;
+    setSaving(true);
+    try {
+      const response = await fetch(`/api/listings/${encodeURIComponent(listing.id)}/submit`, { method: "POST" });
+      const result = await response.json() as { error?: string };
+      if (!response.ok) throw new Error(result.error || "Could not resubmit this listing.");
+      router.replace(`/owner/submitted/${encodeURIComponent(listing.id)}`);
+    } catch (cause) {
+      setResubmitError(cause instanceof Error ? cause.message : "Could not resubmit this listing.");
     } finally {
       setSaving(false);
     }
@@ -321,6 +345,11 @@ export function HostListingDetails() {
         <section className="host-editor-card">
           {listing.listing_photos[0] && <div className="host-editor-image"><Image src={listing.listing_photos[0].image_url} alt={`${listing.title} warehouse`} fill unoptimized sizes="(max-width: 480px) 100vw, 480px" /></div>}
           <p className="host-editor-status">{statusText(listing.status)}</p>
+          {listing.status === "rejected" && listing.rejection_reason && (
+            <p className="listing-rejection-note" role="status">
+              <strong>Reviewer feedback:</strong> {listing.rejection_reason}
+            </p>
+          )}
           {canEdit ? (
             <>
               <label>City<input value={city} onChange={(event) => setCity(event.target.value)} /></label>
@@ -341,7 +370,19 @@ export function HostListingDetails() {
                   ))}
                 </div>
               </fieldset>
-              <button type="button" className="host-editor-save" onClick={() => void save()} disabled={saving}>{saving ? "Saving…" : "Save changes"}</button>
+              <div className="host-editor-actions">
+                <button type="button" className="host-editor-save" onClick={() => void save()} disabled={saving}>{saving ? "Saving…" : "Save changes"}</button>
+                {listing.status === "rejected" && (
+                  <button
+                    type="button"
+                    className="host-editor-save host-editor-resubmit"
+                    onClick={() => void resubmit()}
+                    disabled={saving}
+                  >
+                    {saving ? "Resubmitting…" : "Save & resubmit for review"}
+                  </button>
+                )}
+              </div>
             </>
           ) : (
             <div className="host-readonly-listing">
@@ -353,6 +394,7 @@ export function HostListingDetails() {
           )}
           {saved && <p className="host-success-message" role="status">Listing changes saved.</p>}
           {saveError && <p className="host-state-error" role="alert">{saveError}</p>}
+          {resubmitError && <p className="host-state-error" role="alert">{resubmitError}</p>}
         </section>
       )}
       <button type="button" className="host-back-link" onClick={() => router.push("/owner/spaces")}>Back to Spaces</button>

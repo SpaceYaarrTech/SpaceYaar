@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
+import { createAdminClient } from "@/lib/supabase/admin";
 
 export async function POST(_request: Request, context: { params: Promise<{ id: string }> }) {
   try {
@@ -26,13 +27,33 @@ export async function POST(_request: Request, context: { params: Promise<{ id: s
 
     const { data, error } = await supabase
       .from("listings")
-      .update({ status: "pending_review", updated_at: new Date().toISOString() })
+      .update({
+        status: "pending_review",
+        updated_at: new Date().toISOString(),
+        rejection_reason: null,
+        reviewed_at: null,
+      })
       .eq("id", id)
       .eq("owner_id", user.id)
       .in("status", ["draft", "rejected"])
       .select("id, status")
       .single();
     if (error) return NextResponse.json({ error: error.message }, { status: 400 });
+
+    // A resubmission starts a fresh review: drop review-stage rows from any
+    // previous round so the owner's progress screen begins from step one.
+    try {
+      const admin = createAdminClient();
+      const { error: progressError } = await admin
+        .from("listing_review_progress")
+        .delete()
+        .eq("listing_id", id);
+      if (progressError) {
+        console.error("Could not reset listing review progress:", progressError.message);
+      }
+    } catch (cause) {
+      console.error("Could not reset listing review progress:", cause);
+    }
 
     return NextResponse.json({ listing: data });
   } catch {

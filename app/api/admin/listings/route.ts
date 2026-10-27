@@ -1,30 +1,32 @@
 import { NextResponse } from "next/server";
-import { isAllowlistedAdmin } from "@/lib/auth/admin-access";
+import { requireAdmin } from "@/lib/auth/admin-guard";
 import { createAdminClient } from "@/lib/supabase/admin";
-import { createClient } from "@/lib/supabase/server";
-
-async function getAdminUser() {
-  const supabase = await createClient();
-  const { data: { user }, error } = await supabase.auth.getUser();
-  if (error || !user) return { error: NextResponse.json({ error: "Sign in to continue." }, { status: 401 }) };
-  if (!isAllowlistedAdmin(user.id)) {
-    return { error: NextResponse.json({ error: "You are not authorized to review listings." }, { status: 403 }) };
-  }
-  return { user };
-}
 
 export async function GET() {
   try {
-    const access = await getAdminUser();
-    if ("error" in access) return access.error;
+    const guard = await requireAdmin();
+    if (guard.response) return guard.response;
 
     const admin = createAdminClient();
-    const { data, error } = await admin
+    const reviewProgressEmbed = "listing_review_progress(stage, created_at)";
+    const baseSelect = "id, owner_id, title, description, property_type, price_amount, price_model, address, pincode, city, state, created_at, listing_photos(id, storage_path, label, position), listing_documents(id, storage_path, document_type)";
+    let { data, error } = await admin
       .from("listings")
-      .select("id, owner_id, title, description, property_type, price_amount, price_model, address, pincode, city, state, created_at, listing_photos(id, storage_path, label, position), listing_documents(id, storage_path, document_type)")
+      .select(`${baseSelect}, ${reviewProgressEmbed}`)
       .eq("status", "pending_review")
       .order("created_at", { ascending: true })
       .limit(50);
+    if (error && error.message.includes("listing_review_progress")) {
+      // Review-progress migration not applied yet: serve the queue without stages.
+      const fallback = await admin
+        .from("listings")
+        .select(baseSelect)
+        .eq("status", "pending_review")
+        .order("created_at", { ascending: true })
+        .limit(50);
+      data = fallback.data as typeof data;
+      error = fallback.error;
+    }
     if (error) {
       console.error("Could not load pending listing reviews:", error.message);
       return NextResponse.json({ error: "Could not load pending listings." }, { status: 500 });
@@ -52,6 +54,7 @@ export async function GET() {
       return {
         ...listing,
         owner: ownerById.get(listing.owner_id) ?? null,
+        review_progress: listing.listing_review_progress ?? [],
         listing_photos: [...listing.listing_photos]
           .sort((first, second) => first.position - second.position)
           .map((photo) => ({

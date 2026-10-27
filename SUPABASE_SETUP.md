@@ -74,12 +74,16 @@ Apply all migrations in timestamp order:
 4. `20261019000000_razorpay_payments.sql`
 5. `20261019010000_booking_transactions.sql`
 6. `20261019020000_listing_moderation.sql`
+7. `20261020000000_renter_profile_addresses.sql`
+8. `20261028000000_review_progress_notifications.sql`
 
 The migrations create profile, listing, photo metadata, private KYC metadata, favorites, booking, payment and moderation tables with RLS. They create a public `listing-photos` bucket and a private `kyc-documents` bucket.
 
 API routes cover profile role updates, published listing reads, owner listing drafts and submission, media metadata, favorites, booking requests/status updates, and listing moderation. New owner submissions become `pending_review` and are not exposed to renters until approved.
 
-For the internal review screen, create the reviewer account in Supabase Auth, copy its user UUID from **Authentication → Users**, and add it to the server-only `SPACEYAAR_ADMIN_USER_IDS` environment variable. Separate multiple UUIDs with commas. In the app, open **Owner → Dashboard** and tap **Host Dashboard** three times quickly. The gesture only opens the screen; every admin API call independently checks the allowlist. Do not put admin user IDs in a `NEXT_PUBLIC_` variable.
+The admin review portal lives at `/admin/review`. Access is allowlisted by account email: the built-in default is `spaceyaarr@gmail.com`, and the server-only `SPACEYAAR_ADMIN_EMAILS` environment variable (comma-separated) replaces that list when set. `SPACEYAAR_ADMIN_USER_IDS` still works for raw Supabase user UUIDs. Never put either value in a `NEXT_PUBLIC_` variable — every admin API route re-checks the allowlist server-side, and the page redirects signed-out visitors to `/login`. In the app, open **Owner → Dashboard** and tap **Host Dashboard** three times quickly to reach the screen, or navigate to `/admin/review` directly.
+
+While reviewing, opening a photo or document records a `viewed` stage, "Approve photos & documents" records `assets_approved`, and "Approve and publish" flips the listing to `published` (the `moderate_listing` RPC) and notifies the owner. Owners watch these stages live on `/owner/submitted/[id]`, which polls while review is pending and shows a "View your listing" button once the listing is live. Rejections store `listings.rejection_reason` (shown to the owner) and create a notification; resubmitting through `POST /api/listings/[id]/submit` clears the reason and resets the review stages.
 
 Renter Search and Saved Spaces use published listings and the existing `favorites` table. Saved collection cards are derived from each renter's saved listings by city and property type; there is no separate user-created collection feature. Map markers are only shown for listings with stored latitude and longitude. Booking history uses canonical booking statuses and accepted booking dates; calling an owner requires the server-only service-role key. The app does not yet have an in-app messaging/conversation backend, so the Chat Owner action reports that messaging is unavailable instead of creating a fake conversation.
 
