@@ -15,14 +15,34 @@ export async function POST(_request: Request, context: { params: Promise<{ id: s
       .eq("listing_id", id);
     if (photoError) return NextResponse.json({ error: photoError.message }, { status: 400 });
 
+    const { count: imageCount, error: imageError } = await supabase
+      .from("listing_photos")
+      .select("id", { count: "exact", head: true })
+      .eq("listing_id", id)
+      .eq("media_type", "image");
+    if (imageError && !imageError.message.includes("media_type")) {
+      return NextResponse.json({ error: imageError.message }, { status: 400 });
+    }
+
     const { count: documentCount, error: documentError } = await supabase
       .from("listing_documents")
       .select("id", { count: "exact", head: true })
       .eq("listing_id", id);
     if (documentError) return NextResponse.json({ error: documentError.message }, { status: 400 });
 
-    if (!photoCount || !documentCount) {
-      return NextResponse.json({ error: "Add at least one space photo and one KYC document before submitting." }, { status: 400 });
+    const { count: aadhaarCount, error: aadhaarError } = await supabase
+      .from("listing_documents")
+      .select("id", { count: "exact", head: true })
+      .eq("listing_id", id)
+      .eq("document_type", "Aadhaar Card");
+    if (aadhaarError) return NextResponse.json({ error: aadhaarError.message }, { status: 400 });
+
+    if (!photoCount || photoCount < 2 || (imageCount ?? 0) < 1) {
+      return NextResponse.json({ error: "Add at least two space photos (or one photo plus one video) before submitting." }, { status: 400 });
+    }
+
+    if (!documentCount || !aadhaarCount) {
+      return NextResponse.json({ error: "Upload your Aadhaar card before submitting." }, { status: 400 });
     }
 
     const { data, error } = await supabase

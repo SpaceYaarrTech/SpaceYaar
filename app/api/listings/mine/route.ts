@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { listingMediaBucket } from "@/lib/listing-media";
 import { createClient } from "@/lib/supabase/server";
 
 export async function GET() {
@@ -9,7 +10,7 @@ export async function GET() {
 
     let { data, error } = await supabase
       .from("listings")
-      .select("*, listing_photos(id, storage_path, label, position), listing_documents(id, storage_path, document_type), listing_review_progress(stage, created_at)")
+      .select("*, listing_photos(*), listing_documents(id, storage_path, document_type), listing_review_progress(stage, created_at)")
       .eq("owner_id", user.id)
       .order("created_at", { ascending: false });
     if (error && error.message.includes("listing_review_progress")) {
@@ -17,7 +18,7 @@ export async function GET() {
       // the previous shape so owners can still load their listings.
       const fallback = await supabase
         .from("listings")
-        .select("*, listing_photos(id, storage_path, label, position), listing_documents(id, storage_path, document_type)")
+        .select("*, listing_photos(*), listing_documents(id, storage_path, document_type)")
         .eq("owner_id", user.id)
         .order("created_at", { ascending: false });
       data = fallback.data;
@@ -36,9 +37,9 @@ export async function GET() {
       return {
         ...listing,
         review_progress: listing.listing_review_progress ?? [],
-        listing_photos: listing.listing_photos.map((photo: { id: string; storage_path: string; label: string; position: number }) => ({
+        listing_photos: listing.listing_photos.map((photo: { id: string; storage_path: string; label: string; position: number; media_type?: string }) => ({
           ...photo,
-          image_url: supabase.storage.from("listing-photos").getPublicUrl(photo.storage_path).data.publicUrl,
+          image_url: supabase.storage.from(listingMediaBucket(photo.media_type)).getPublicUrl(photo.storage_path).data.publicUrl,
         })),
         listing_documents: documents,
       };

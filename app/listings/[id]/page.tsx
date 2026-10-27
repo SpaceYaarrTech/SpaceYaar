@@ -21,7 +21,7 @@ type ListingDetails = {
   state: string;
   pincode: string | null;
   amenities: string[];
-  listing_photos: Array<{ image_url: string; label: string; position: number }>;
+  listing_photos: Array<{ image_url: string; label: string; position: number; media_type?: string }>;
 };
 
 export default function ListingDetailsPage() {
@@ -33,6 +33,7 @@ export default function ListingDetailsPage() {
   const [error, setError] = useState("");
   const [actionError, setActionError] = useState("");
   const [saving, setSaving] = useState(false);
+  const [activeMediaIndex, setActiveMediaIndex] = useState(0);
 
   useEffect(() => {
     let current = true;
@@ -44,7 +45,10 @@ export default function ListingDetailsPage() {
         ]);
         const result = await listingResponse.json() as { listing?: ListingDetails; error?: string };
         if (!listingResponse.ok || !result.listing) throw new Error(result.error || "Could not load this space.");
-        if (current) setListing(result.listing);
+        if (current) {
+          setListing(result.listing);
+          setActiveMediaIndex(0);
+        }
         if (favoritesResponse.ok) {
           const favorites = await favoritesResponse.json() as { favorites?: Array<{ listing_id: string }> };
           if (current) setSaved((favorites.favorites ?? []).some((favorite) => favorite.listing_id === id));
@@ -84,7 +88,9 @@ export default function ListingDetailsPage() {
   if (loading) return <main className="renter-flow-page"><p className="renter-flow-state" role="status">Loading space…</p><RenterBottomNavigation /></main>;
   if (error || !listing) return <main className="renter-flow-page"><p className="renter-flow-error" role="alert">{error || "Space not found."}</p><Link className="renter-detail-back" href="/search"><ArrowLeft size={16} />Back to Search</Link><RenterBottomNavigation /></main>;
 
-  const images = [...listing.listing_photos].sort((a, b) => a.position - b.position);
+  const media = [...listing.listing_photos].sort((a, b) => a.position - b.position);
+  const activeIndex = Math.min(activeMediaIndex, Math.max(0, media.length - 1));
+  const activeMedia = media[activeIndex] ?? null;
   return (
     <main className="renter-flow-page renter-listing-detail-page">
       <header className="renter-detail-toolbar">
@@ -94,7 +100,32 @@ export default function ListingDetailsPage() {
           <Heart size={20} fill={saved ? "currentColor" : "none"} />
         </button>
       </header>
-      {images[0] && <div className="renter-detail-image"><Image src={images[0].image_url} alt={images[0].label || listing.title} fill unoptimized sizes="480px" priority /></div>}
+      {activeMedia && (
+        <div className="renter-detail-image">
+          {activeMedia.media_type === "video" ? (
+            <video key={activeMedia.image_url} src={activeMedia.image_url} className="renter-detail-video" controls playsInline preload="metadata" />
+          ) : (
+            <Image src={activeMedia.image_url} alt={activeMedia.label || listing.title} fill unoptimized sizes="480px" priority />
+          )}
+        </div>
+      )}
+      {media.length > 1 && (
+        <div className="renter-detail-gallery" aria-label="Photos and videos">
+          {media.map((item, index) => (
+            <button
+              key={item.image_url}
+              type="button"
+              className={`renter-detail-thumb${index === activeIndex ? " is-active" : ""}`}
+              onClick={() => setActiveMediaIndex(index)}
+              aria-label={`View ${item.label || (item.media_type === "video" ? "video" : "photo")} ${index + 1}`}
+            >
+              {item.media_type === "video"
+                ? <video src={item.image_url} muted playsInline preload="metadata" />
+                : <Image src={item.image_url} alt="" width={72} height={54} unoptimized />}
+            </button>
+          ))}
+        </div>
+      )}
       <section className="renter-detail-copy">
         <span className="renter-detail-verified"><ShieldCheck size={14} /> Verified listing</span>
         <h1>{listing.title}</h1>

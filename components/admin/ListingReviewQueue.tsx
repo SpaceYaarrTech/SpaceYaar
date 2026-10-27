@@ -24,7 +24,7 @@ type ReviewListing = {
     business_name: string | null;
     business_type: string | null;
   } | null;
-  listing_photos: Array<{ id: string; label: string; image_url: string }>;
+  listing_photos: Array<{ id: string; label: string; image_url: string; media_type?: string }>;
   listing_documents: Array<{ id: string; document_type: string; signed_url: string }>;
   review_progress: ReviewStage[];
 };
@@ -238,7 +238,9 @@ export function ListingReviewQueue() {
                               onClick={() => openPhoto(listing, index)}
                               aria-label={`Open ${photo.label} full size`}
                             >
-                              <Image src={photo.image_url} alt={photo.label} width={160} height={110} unoptimized />
+                              {photo.media_type === "video"
+                                ? <video src={photo.image_url} className="admin-review-video-thumb" muted playsInline preload="metadata" />
+                                : <Image src={photo.image_url} alt={photo.label} width={160} height={110} unoptimized />}
                             </button>
                           ))}
                         </div>
@@ -312,15 +314,26 @@ export function ListingReviewQueue() {
             <span>{lightbox.index + 1} / {lightboxListing.listing_photos.length}</span>
             <button type="button" onClick={() => setLightbox(null)} aria-label="Close photo viewer">Close ✕</button>
           </div>
-          <Image
-            key={lightboxPhoto.id}
-            src={lightboxPhoto.image_url}
-            alt={lightboxPhoto.label}
-            width={1200}
-            height={800}
-            unoptimized
-            priority
-          />
+          {lightboxPhoto.media_type === "video" ? (
+            <video
+              key={lightboxPhoto.id}
+              src={lightboxPhoto.image_url}
+              className="admin-lightbox-video"
+              controls
+              autoPlay
+              playsInline
+            />
+          ) : (
+            <Image
+              key={lightboxPhoto.id}
+              src={lightboxPhoto.image_url}
+              alt={lightboxPhoto.label}
+              width={1200}
+              height={800}
+              unoptimized
+              priority
+            />
+          )}
           <div className="admin-lightbox-controls">
             <button
               type="button"

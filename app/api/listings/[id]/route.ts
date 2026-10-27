@@ -1,8 +1,9 @@
 import { NextResponse } from "next/server";
 import { parseListingDraft } from "@/lib/api/listing-input";
+import { listingMediaBucket } from "@/lib/listing-media";
 import { createClient } from "@/lib/supabase/server";
 
-const PUBLIC_COLUMNS = "id, title, description, property_type, area_value, area_unit, price_amount, price_model, min_booking_days, city, state, pincode, amenities, latitude, longitude, listing_photos(id, storage_path, label, position)";
+const PUBLIC_COLUMNS = "id, title, description, property_type, area_value, area_unit, price_amount, price_model, min_booking_days, city, state, pincode, amenities, latitude, longitude, listing_photos(*)";
 
 export async function GET(_request: Request, context: { params: Promise<{ id: string }> }) {
   try {
@@ -18,7 +19,7 @@ export async function GET(_request: Request, context: { params: Promise<{ id: st
         .sort((first, second) => first.position - second.position)
         .map((photo) => ({
           ...photo,
-          image_url: supabase.storage.from("listing-photos").getPublicUrl(photo.storage_path).data.publicUrl,
+          image_url: supabase.storage.from(listingMediaBucket(photo.media_type)).getPublicUrl(photo.storage_path).data.publicUrl,
         })),
     };
     return NextResponse.json({ listing });
@@ -66,20 +67,35 @@ export async function DELETE(_request: Request, context: { params: Promise<{ id:
     const { data: { user }, error: authError } = await supabase.auth.getUser();
     if (authError || !user) return NextResponse.json({ error: "Sign in to delete this listing." }, { status: 401 });
 
-    const { data: listing, error: listingError } = await supabase
+    let { data: listing, error: listingError } = await supabase
       .from("listings")
-      .select("id, listing_photos(storage_path), listing_documents(storage_path)")
+      .select("id, listing_photos(storage_path, media_type), listing_documents(storage_path)")
       .eq("id", id)
       .eq("owner_id", user.id)
       .eq("status", "draft")
       .maybeSingle();
+    if (listingError && listingError.message.includes("media_type")) {
+      const fallback = await supabase
+        .from("listings")
+        .select("id, listing_photos(storage_path), listing_documents(storage_path)")
+        .eq("id", id)
+        .eq("owner_id", user.id)
+        .eq("status", "draft")
+        .maybeSingle();
+      listing = fallback.data as typeof listing;
+      listingError = fallback.error;
+    }
     if (listingError) return NextResponse.json({ error: listingError.message }, { status: 400 });
     if (!listing) return NextResponse.json({ error: "Draft listing not found." }, { status: 404 });
 
-    const photoPaths = listing.listing_photos.map((photo) => photo.storage_path);
+    const mediaPaths = { "listing-photos": [] as string[], "listing-videos": [] as string[] };
+    for (const photo of listing.listing_photos ?? []) {
+      mediaPaths[listingMediaBucket(photo.media_type)].push(photo.storage_path);
+    }
     const documentPaths = listing.listing_documents.map((document) => document.storage_path);
-    if (photoPaths.length) {
-      const { error } = await supabase.storage.from("listing-photos").remove(photoPaths);
+    for (const [bucket, paths] of Object.entries(mediaPaths)) {
+      if (!paths.length) continue;
+      const { error } = await supabase.storage.from(bucket).remove(paths);
       if (error) return NextResponse.json({ error: error.message }, { status: 400 });
     }
     if (documentPaths.length) {

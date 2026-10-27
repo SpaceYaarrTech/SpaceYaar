@@ -11,6 +11,15 @@ import type { LocationSearchResult } from "@/lib/maps/geocoding";
 import { createClient } from "@/lib/supabase/client";
 import { isAuthBypassEnabled } from "@/lib/auth/auth-bypass";
 import { savePreviewListing } from "@/lib/owner/host-data";
+import {
+  LISTING_MIN_IMAGES,
+  LISTING_MIN_MEDIA,
+  MAX_IMAGE_BYTES,
+  MAX_VIDEO_BYTES,
+  compressImageFile,
+  formatFileSize,
+  isValidVideoMime,
+} from "@/lib/listing-media";
 
 const LocationMap = dynamic(() => import("@/components/location/LocationMap"), { ssr: false });
 
@@ -149,46 +158,38 @@ export function OwnerHome() {
   const [currentStep, setCurrentStep] = useState(1);
   const [showReview, setShowReview] = useState(false);
 
-  const [selectedSpaceType, setSelectedSpaceType] = useState("cold-storage");
+  const [selectedSpaceType, setSelectedSpaceType] = useState("");
   const [selectedFloor, setSelectedFloor] = useState("");
   const [floorError, setFloorError] = useState("");
-  const [spaceArea, setSpaceArea] = useState("2,700");
+  const [spaceArea, setSpaceArea] = useState("");
   const [spaceAreaUnit, setSpaceAreaUnit] = useState<SpaceAreaUnit>("Sq. Feet");
   const [description, setDescription] = useState("");
-  const [selectedUsages, setSelectedUsages] = useState<string[]>(["General"]);
+  const [selectedUsages, setSelectedUsages] = useState<string[]>([]);
 
-  const [length, setLength] = useState("20");
-  const [breadth, setBreadth] = useState("40");
+  const [length, setLength] = useState("");
+  const [breadth, setBreadth] = useState("");
   const [height, setHeight] = useState("");
   const [dimensionUnit, setDimensionUnit] = useState<DimensionUnit>("Ft");
   const [temperature, setTemperature] = useState("");
   const [temperatureUnit, setTemperatureUnit] = useState<TemperatureUnit>("Celsius");
-  const [selectedLoadingFeatures, setSelectedLoadingFeatures] = useState<string[]>([
-    "24/7 CCTV Camera",
-    "Loading Dock",
-    "E-Forklift Ready",
-    "Security Guard",
-  ]);
+  const [selectedLoadingFeatures, setSelectedLoadingFeatures] = useState<string[]>([]);
 
-  const [selectedAmenities, setSelectedAmenities] = useState<string[]>([
-    ...SECURITY_AMENITIES,
-    ...UTILITY_AMENITIES,
-    ...LOGISTICS_AMENITIES,
-  ]);
+  const [selectedAmenities, setSelectedAmenities] = useState<string[]>([]);
 
-  const [priceModel, setPriceModel] = useState("Per Day");
+  const [priceModel, setPriceModel] = useState("");
   const [rate, setRate] = useState("");
   const [securityAmount, setSecurityAmount] = useState("");
   const [refundDays, setRefundDays] = useState("");
-  const [availabilityDays, setAvailabilityDays] = useState<string[]>(["Mon", "Wed", "Fri"]);
-  const [minimumBookingDuration, setMinimumBookingDuration] = useState("3 Days");
+  const [availabilityDays, setAvailabilityDays] = useState<string[]>([]);
+  const [minimumBookingDuration, setMinimumBookingDuration] = useState("");
 
-  const [photoFiles, setPhotoFiles] = useState<Record<string, { name: string; previewUrl: string; file: File }>>({});
+  const [photoFiles, setPhotoFiles] = useState<Record<string, { name: string; previewUrl: string; file: File; isVideo: boolean }>>({});
   const [documentFiles, setDocumentFiles] = useState<Record<string, { name: string; file: File }>>({});
   const [draftListingId, setDraftListingId] = useState<string | null>(null);
   const [isSubmittingListing, setIsSubmittingListing] = useState(false);
   const [submissionError, setSubmissionError] = useState("");
-  const [address, setAddress] = useState("JS Cold Storage, 16/80 1, Civil Lines, Kanpur-208001...");
+  const [stepError, setStepError] = useState("");
+  const [address, setAddress] = useState("");
   const [pincode, setPincode] = useState("");
   const [city, setCity] = useState("");
   const [state, setState] = useState("");
@@ -303,16 +304,59 @@ export function OwnerHome() {
     photoPreviewUrlsRef.current.forEach((previewUrl) => URL.revokeObjectURL(previewUrl));
   }, []);
 
+  const mediaCount = Object.keys(photoFiles).length;
+  const imageCount = Object.values(photoFiles).filter((photo) => !photo.isVideo).length;
+
   const handleUpload = (label: string, event: ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0];
+    event.target.value = "";
     if (!file) return;
+
+    if (file.type.startsWith("video/")) {
+      if (!isValidVideoMime(file)) {
+        setStepError("Videos must be MP4, WebM or MOV.");
+        return;
+      }
+      if (file.size > MAX_VIDEO_BYTES) {
+        setStepError(`Videos must be under 10 MB — this one is ${formatFileSize(file.size)}.`);
+        return;
+      }
+      const previewUrl = URL.createObjectURL(file);
+      photoPreviewUrlsRef.current.push(previewUrl);
+      setStepError("");
+      setPhotoFiles((current) => ({
+        ...current,
+        [label]: { name: file.name, previewUrl, file, isVideo: true },
+      }));
+      return;
+    }
+
+    if (!file.type.startsWith("image/")) {
+      setStepError("Upload a photo or a video (MP4, WebM or MOV).");
+      return;
+    }
+    if (file.size > MAX_IMAGE_BYTES) {
+      setStepError(`Photos must be under 15 MB — this one is ${formatFileSize(file.size)}.`);
+      return;
+    }
 
     const previewUrl = URL.createObjectURL(file);
     photoPreviewUrlsRef.current.push(previewUrl);
+    setStepError("");
     setPhotoFiles((current) => ({
       ...current,
-      [label]: { name: file.name, previewUrl, file },
+      [label]: { name: file.name, previewUrl, file, isVideo: false },
     }));
+
+    // Compress in the background so the pick interaction never waits on it.
+    // The slot keeps the original until compression finishes (or is skipped).
+    void compressImageFile(file).then((compressed) => {
+      setPhotoFiles((current) => {
+        const slot = current[label];
+        if (!slot || slot.file !== file) return current;
+        return { ...current, [label]: { ...slot, file: compressed } };
+      });
+    });
   };
 
   const handleDocumentUpload = (label: string, event: ChangeEvent<HTMLInputElement>) => {
@@ -381,8 +425,13 @@ export function OwnerHome() {
 
     const photos = Object.entries(photoFiles);
     const documents = Object.entries(documentFiles);
-    if (!photos.length || !documents.length) {
-      setSubmissionError("Add at least one space photo and one KYC document before submitting.");
+    const photoCount = photos.filter(([, photo]) => !photo.isVideo).length;
+    if (photos.length < LISTING_MIN_MEDIA || photoCount < LISTING_MIN_IMAGES) {
+      setSubmissionError("Add at least 2 photos or videos (including at least one photo) before submitting.");
+      return;
+    }
+    if (!documentFiles["Aadhaar Card"]) {
+      setSubmissionError("Upload your Aadhaar card before submitting.");
       return;
     }
 
@@ -437,12 +486,13 @@ export function OwnerHome() {
       const photoMetadata = [];
       for (const [index, [label, photo]] of photos.entries()) {
         const storagePath = `${user.id}/${listingId}/${crypto.randomUUID()}-${safeFileName(photo.name)}`;
-        const { error } = await supabase.storage.from("listing-photos").upload(storagePath, photo.file, {
+        const bucket = photo.isVideo ? "listing-videos" : "listing-photos";
+        const { error } = await supabase.storage.from(bucket).upload(storagePath, photo.file, {
           contentType: photo.file.type,
           upsert: false,
         });
         if (error) throw new Error(error.message);
-        photoMetadata.push({ storagePath, label, position: index });
+        photoMetadata.push({ storagePath, label, position: index, mediaType: photo.isVideo ? "video" : "image" });
       }
 
       const documentMetadata = [];
@@ -479,9 +529,33 @@ export function OwnerHome() {
   };
 
   const handleNext = () => {
-    if (currentStep === 1 && !selectedFloor) {
-      setFloorError("Select a floor level to continue.");
+    if (currentStep === 1) {
+      if (!selectedSpaceType) {
+        setStepError("Select a space type to continue.");
+        return;
+      }
+      if (!selectedFloor) {
+        setFloorError("Select a floor level to continue.");
+        return;
+      }
+      setStepError("");
+    }
+
+    if (currentStep === 2 && (!length.trim() || !breadth.trim())) {
+      setStepError("Enter length and breadth to continue.");
       return;
+    }
+
+    if (currentStep === 5) {
+      if (mediaCount < LISTING_MIN_MEDIA || imageCount < LISTING_MIN_IMAGES) {
+        setStepError("Add at least 2 photos or videos (including at least one photo) to continue.");
+        return;
+      }
+      if (!documentFiles["Aadhaar Card"]) {
+        setStepError("Aadhaar card upload is required — the other documents are optional.");
+        return;
+      }
+      setStepError("");
     }
 
     if (currentStep >= totalSteps) {
@@ -489,6 +563,7 @@ export function OwnerHome() {
       return;
     }
 
+    setStepError("");
     setCurrentStep((step) => Math.min(step + 1, totalSteps));
   };
 
@@ -630,6 +705,7 @@ export function OwnerHome() {
         </div>
       </section>
 
+      {stepError && currentStep === 1 && <p className="owner-field-error owner-step-error" role="alert">{stepError}</p>}
       <button type="button" className="owner-cta" onClick={handleNext}>
         Save &amp; Continue
       </button>
@@ -730,6 +806,7 @@ export function OwnerHome() {
         })}
       </div>
 
+      {stepError && currentStep === 2 && <p className="owner-field-error owner-step-error" role="alert">{stepError}</p>}
       <button type="button" className="owner-cta owner-cta--step-2" onClick={handleNext}>
         Save &amp; Continue
       </button>
@@ -854,18 +931,21 @@ export function OwnerHome() {
         <span className="owner-helper-icon">
           <Info size={14} />
         </span>
-        <span>Take clear, wide shots showing your space, access roads &amp; safety gear.</span>
+        <span>Take clear, wide shots showing your space, access roads &amp; safety gear. Add a walkthrough video (under 10 MB) for faster approvals.</span>
       </div>
 
       <section className="owner-upload-section">
-        <h2>Space Photos</h2>
+        <h2>Space Photos &amp; Videos</h2>
+        <p className="owner-upload-count" role="status">
+          {mediaCount} of {PHOTO_OPTIONS.length} added · minimum {LISTING_MIN_MEDIA} (including at least one photo)
+        </p>
         <div className="owner-upload-grid">
           {PHOTO_OPTIONS.map((photo) => {
             const inputId = `photo-upload-${photo}`;
             const selectedPhoto = photoFiles[photo];
             return (
               <div key={photo} className="owner-upload-card-wrap">
-                <input id={inputId} type="file" accept="image/*" onChange={(event) => handleUpload(photo, event)} hidden />
+                <input id={inputId} type="file" accept="image/*,video/mp4,video/webm,video/quicktime" onChange={(event) => handleUpload(photo, event)} hidden />
                 <button
                   type="button"
                   className={`owner-upload-card ${selectedPhoto ? "owner-upload-card--filled" : ""}`}
@@ -873,7 +953,11 @@ export function OwnerHome() {
                 >
                   {selectedPhoto ? (
                     <>
-                      <img src={selectedPhoto.previewUrl} alt={`${photo} preview`} className="owner-upload-preview" />
+                      {selectedPhoto.isVideo ? (
+                        <video src={selectedPhoto.previewUrl} className="owner-upload-preview owner-upload-video-preview" muted playsInline />
+                      ) : (
+                        <img src={selectedPhoto.previewUrl} alt={`${photo} preview`} className="owner-upload-preview" />
+                      )}
                       <span className="owner-upload-file-name">{selectedPhoto.name}</span>
                     </>
                   ) : (
@@ -893,6 +977,7 @@ export function OwnerHome() {
 
       <section className="owner-upload-section owner-upload-section--documents">
         <h2>Upload KYC Documents</h2>
+        <p className="owner-upload-count">Aadhaar card is required · other documents are optional</p>
         <div className="owner-doc-list">
           {DOCUMENT_OPTIONS.map((documentName) => {
             const inputId = `doc-upload-${documentName}`;
@@ -907,7 +992,9 @@ export function OwnerHome() {
                     </span>
                     <span className="owner-doc-name">{documentName}</span>
                   </span>
-                  <span className="owner-doc-required">{selectedDocument ? selectedDocument.name : "Required"}</span>
+                  <span className={`owner-doc-required ${selectedDocument ? "" : documentName === "Aadhaar Card" ? "owner-doc-required--mandatory" : "owner-doc-required--optional"}`}>
+                    {selectedDocument ? selectedDocument.name : documentName === "Aadhaar Card" ? "Required" : "Optional"}
+                  </span>
                 </button>
               </div>
             );
@@ -915,6 +1002,7 @@ export function OwnerHome() {
         </div>
       </section>
 
+      {stepError && currentStep === 5 && <p className="owner-field-error owner-step-error" role="alert">{stepError}</p>}
       <PrimaryButton type="button" className="owner-cta owner-cta--step-5" onClick={handleNext}>
         Save &amp; Continue
       </PrimaryButton>

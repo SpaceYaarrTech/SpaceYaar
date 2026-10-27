@@ -13,6 +13,12 @@ function HostState({ loading, error }: { loading: boolean; error: string }) {
   return null;
 }
 
+/** Prefers a real photo over a video for small listing thumbnails. */
+function coverPhoto(listing: { listing_photos: Array<{ image_url: string; position: number; media_type?: string }> }) {
+  const sorted = [...listing.listing_photos].sort((first, second) => first.position - second.position);
+  return sorted.find((item) => item.media_type !== "video") ?? sorted[0];
+}
+
 export function HostSpaces() {
   const { data, loading, error } = useHostData();
   const listings = data?.listings ?? [];
@@ -26,7 +32,7 @@ export function HostSpaces() {
       <HostState loading={loading} error={error} />
       {!loading && !error && (listings.length ? listings.map((listing) => (
         <article className="host-record-card host-space-row" key={listing.id}>
-          {listing.listing_photos[0] ? <Image src={listing.listing_photos[0].image_url} alt="" width={56} height={56} unoptimized /> : <span className="host-space-icon"><Building2 size={21} /></span>}
+          {(() => { const photo = coverPhoto(listing); return photo ? <Image src={photo.image_url} alt="" width={56} height={56} unoptimized /> : <span className="host-space-icon"><Building2 size={21} /></span>; })()}
           <div className="host-space-info">
             <strong>{listing.title}</strong>
             <span>{listing.city} · {statusText(listing.status)}</span>
@@ -343,7 +349,7 @@ export function HostListingDetails() {
       {!loading && !error && !listing && <p className="host-state-error" role="alert">This listing wasn’t found in your account.</p>}
       {listing && (
         <section className="host-editor-card">
-          {listing.listing_photos[0] && <div className="host-editor-image"><Image src={listing.listing_photos[0].image_url} alt={`${listing.title} warehouse`} fill unoptimized sizes="(max-width: 480px) 100vw, 480px" /></div>}
+          {coverPhoto(listing) && <div className="host-editor-image"><Image src={coverPhoto(listing)!.image_url} alt={`${listing.title} warehouse`} fill unoptimized sizes="(max-width: 480px) 100vw, 480px" /></div>}
           <p className="host-editor-status">{statusText(listing.status)}</p>
           {listing.status === "rejected" && listing.rejection_reason && (
             <p className="listing-rejection-note" role="status">

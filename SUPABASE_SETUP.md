@@ -76,10 +76,13 @@ Apply all migrations in timestamp order:
 6. `20261019020000_listing_moderation.sql`
 7. `20261020000000_renter_profile_addresses.sql`
 8. `20261028000000_review_progress_notifications.sql`
+9. `20261029000000_listing_videos_media_type.sql`
 
 The migrations create profile, listing, photo metadata, private KYC metadata, favorites, booking, payment and moderation tables with RLS. They create a public `listing-photos` bucket and a private `kyc-documents` bucket.
 
 API routes cover profile role updates, published listing reads, owner listing drafts and submission, media metadata, favorites, booking requests/status updates, and listing moderation. New owner submissions become `pending_review` and are not exposed to renters until approved.
+
+Listing media supports photos and videos. Videos (MP4/WebM/MOV) are capped at 10 MB and stored in the public `listing-videos` bucket; photos are compressed in the browser (max 1920px, JPEG) before upload so owners on slow connections send fewer bytes. A submission needs at least two media items including at least one photo, plus an Aadhaar card — all other KYC documents are optional. Listing reads degrade gracefully if this migration is not applied yet.
 
 The admin review portal lives at `/admin/review`. Access is allowlisted by account email: the built-in default is `spaceyaarr@gmail.com`, and the server-only `SPACEYAAR_ADMIN_EMAILS` environment variable (comma-separated) replaces that list when set. `SPACEYAAR_ADMIN_USER_IDS` still works for raw Supabase user UUIDs. Never put either value in a `NEXT_PUBLIC_` variable — every admin API route re-checks the allowlist server-side, and the page redirects signed-out visitors to `/login`. In the app, open **Owner → Dashboard** and tap **Host Dashboard** three times quickly to reach the screen, or navigate to `/admin/review` directly.
 

@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { requireAdmin } from "@/lib/auth/admin-guard";
+import { listingMediaBucket } from "@/lib/listing-media";
 import { createAdminClient } from "@/lib/supabase/admin";
 
 export async function GET() {
@@ -9,7 +10,7 @@ export async function GET() {
 
     const admin = createAdminClient();
     const reviewProgressEmbed = "listing_review_progress(stage, created_at)";
-    const baseSelect = "id, owner_id, title, description, property_type, price_amount, price_model, address, pincode, city, state, created_at, listing_photos(id, storage_path, label, position), listing_documents(id, storage_path, document_type)";
+    const baseSelect = "id, owner_id, title, description, property_type, price_amount, price_model, address, pincode, city, state, created_at, listing_photos(*), listing_documents(id, storage_path, document_type)";
     let { data, error } = await admin
       .from("listings")
       .select(`${baseSelect}, ${reviewProgressEmbed}`)
@@ -59,7 +60,7 @@ export async function GET() {
           .sort((first, second) => first.position - second.position)
           .map((photo) => ({
             ...photo,
-            image_url: admin.storage.from("listing-photos").getPublicUrl(photo.storage_path).data.publicUrl,
+            image_url: admin.storage.from(listingMediaBucket(photo.media_type)).getPublicUrl(photo.storage_path).data.publicUrl,
           })),
         listing_documents: documents,
       };

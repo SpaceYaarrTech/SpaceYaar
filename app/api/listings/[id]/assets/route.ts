@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 
 type AssetPayload = {
-  photos?: Array<{ storagePath?: unknown; label?: unknown; position?: unknown }>;
+  photos?: Array<{ storagePath?: unknown; label?: unknown; position?: unknown; mediaType?: unknown }>;
   documents?: Array<{ storagePath?: unknown; documentType?: unknown }>;
 };
 
@@ -17,8 +17,9 @@ export async function POST(request: Request, context: { params: Promise<{ id: st
     const photos = (Array.isArray(body.photos) ? body.photos : []).slice(0, 12);
     const documents = (Array.isArray(body.documents) ? body.documents : []).slice(0, 10);
     const validPath = (path: unknown) => typeof path === "string" && path.startsWith(`${user.id}/${listingId}/`) && path.length <= 500;
+    const validMediaType = (mediaType: unknown) => mediaType === undefined || mediaType === "image" || mediaType === "video";
 
-    if (photos.some((photo) => !validPath(photo.storagePath) || typeof photo.label !== "string")) {
+    if (photos.some((photo) => !validPath(photo.storagePath) || typeof photo.label !== "string" || !validMediaType(photo.mediaType))) {
       return NextResponse.json({ error: "One or more photo records are invalid." }, { status: 400 });
     }
     if (documents.some((document) => !validPath(document.storagePath) || typeof document.documentType !== "string")) {
@@ -26,15 +27,29 @@ export async function POST(request: Request, context: { params: Promise<{ id: st
     }
 
     if (photos.length) {
-      const { error } = await supabase.from("listing_photos").upsert(
+      let { error } = await supabase.from("listing_photos").upsert(
         photos.map((photo) => ({
           listing_id: listingId,
           storage_path: photo.storagePath as string,
           label: (photo.label as string).slice(0, 80),
           position: Number.isInteger(photo.position) ? photo.position as number : 0,
+          media_type: photo.mediaType === "video" ? "video" : "image",
         })),
         { onConflict: "storage_path" },
       );
+      if (error && error.message.includes("media_type")) {
+        // media_type migration not applied yet: store rows without it.
+        const fallback = await supabase.from("listing_photos").upsert(
+          photos.map((photo) => ({
+            listing_id: listingId,
+            storage_path: photo.storagePath as string,
+            label: (photo.label as string).slice(0, 80),
+            position: Number.isInteger(photo.position) ? photo.position as number : 0,
+          })),
+          { onConflict: "storage_path" },
+        );
+        error = fallback.error;
+      }
       if (error) return NextResponse.json({ error: error.message }, { status: 400 });
     }
 

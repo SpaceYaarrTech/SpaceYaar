@@ -20,7 +20,7 @@ export type RenterListingRecord = {
   longitude?: number | null;
   amenities: string[];
   created_at?: string;
-  listing_photos: Array<{ image_url: string; position: number }>;
+  listing_photos: Array<{ image_url: string; position: number; media_type?: string }>;
 };
 
 export function RenterListingCard({
@@ -34,7 +34,8 @@ export function RenterListingCard({
   onToggleSaved?: (listing: RenterListingRecord) => void;
   distance?: string;
 }) {
-  const image = [...listing.listing_photos].sort((a, b) => a.position - b.position)[0]?.image_url;
+  const sortedMedia = [...listing.listing_photos].sort((a, b) => a.position - b.position);
+  const image = (sortedMedia.find((item) => item.media_type !== "video") ?? sortedMedia[0])?.image_url;
   const area = listing.area_value
     ? `${Number(listing.area_value).toLocaleString("en-IN")} ${listing.area_unit || "sq ft"}`
     : listing.property_type;

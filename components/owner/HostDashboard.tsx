@@ -144,7 +144,8 @@ export function HostDashboard() {
             {activeListings.length ? (
               <div className="host-listing-stack">
                 {activeListings.map((listing) => {
-                  const photo = [...listing.listing_photos].sort((a, b) => a.position - b.position)[0];
+                  const sortedPhotos = [...listing.listing_photos].sort((a, b) => a.position - b.position);
+                  const photo = sortedPhotos.find((item) => item.media_type !== "video") ?? sortedPhotos[0];
                   return (
                     <article className="host-listing-card" key={listing.id}>
                       <Link href={`/owner/listings/${encodeURIComponent(listing.id)}`} className="host-listing-photo" aria-label={`View ${listing.title}`}>

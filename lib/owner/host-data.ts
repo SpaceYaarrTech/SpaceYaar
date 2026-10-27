@@ -39,7 +39,7 @@ export type HostListing = {
   longitude: number | null;
   amenities: string[];
   availability_days: string[];
-  listing_photos: Array<{ id: string; image_url: string; label: string; position: number }>;
+  listing_photos: Array<{ id: string; image_url: string; label: string; position: number; media_type?: string }>;
   rejection_reason?: string | null;
   reviewed_at?: string | null;
   review_progress?: Array<{ stage: "viewed" | "assets_approved"; created_at: string }>;

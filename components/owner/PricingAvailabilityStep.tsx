@@ -45,6 +45,11 @@ export function PricingAvailabilityStep({
   const monthlyRate = useMemo(() => (numericRate ? Math.round(numericRate * 28) : 0), [numericRate]);
 
   const handleContinue = () => {
+    if (!priceModel) {
+      setError("Please select a price model.");
+      return;
+    }
+
     if (!rate || Number(rate) <= 0) {
       setError("Please enter a valid rate.");
       return;

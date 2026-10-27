@@ -56,7 +56,7 @@ type PublicListing = {
   amenities: string[];
   latitude: number | null;
   longitude: number | null;
-  listing_photos: Array<{ image_url: string; label: string; position: number }>;
+  listing_photos: Array<{ image_url: string; label: string; position: number; media_type?: string }>;
 };
 
 type RenterListing = Listing & { minimumBookingDays: number };
@@ -94,7 +94,7 @@ function mapPublicListing(listing: PublicListing, origin: [number, number] | nul
     id: listing.id,
     title: listing.title,
     description: listing.description,
-    image: listing.listing_photos[0]?.image_url || FALLBACK_LISTING_IMAGE,
+    image: (listing.listing_photos.find((photo) => photo.media_type !== "video") ?? listing.listing_photos[0])?.image_url || FALLBACK_LISTING_IMAGE,
     distance: Number.isFinite(distanceValue) ? `${distanceValue.toFixed(1)} km away` : listing.city,
     distanceValue,
     feature: listing.amenities[0] || listing.property_type,

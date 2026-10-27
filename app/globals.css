@@ -6866,3 +6866,84 @@ a { color: inherit; text-decoration: none; }
   background: #fff;
   color: var(--color-brand-dark);
 }
+
+/* ---------- Listing media: videos, upload hints, gallery ---------- */
+
+.owner-upload-video-preview {
+  background: #000;
+}
+
+.owner-upload-count {
+  margin: 6px 0 12px;
+  color: #77727e;
+  font-size: 12.5px;
+}
+
+.owner-doc-required--mandatory {
+  color: #b3261e;
+  font-weight: 700;
+}
+
+.owner-doc-required--optional {
+  color: #9a95a3;
+}
+
+.owner-step-error {
+  display: block;
+  margin: 14px 2px 0;
+}
+
+.admin-review-video-thumb {
+  width: 160px;
+  height: 110px;
+  border-radius: 10px;
+  background: #000;
+  object-fit: cover;
+}
+
+.admin-lightbox-video {
+  max-width: min(100%, 1040px);
+  max-height: 68vh;
+  border-radius: 12px;
+  background: #000;
+}
+
+.renter-detail-video {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  background: #000;
+}
+
+.renter-detail-gallery {
+  display: flex;
+  gap: 8px;
+  margin-top: 10px;
+  overflow-x: auto;
+  padding-bottom: 4px;
+}
+
+.renter-detail-thumb {
+  flex: 0 0 auto;
+  padding: 0;
+  overflow: hidden;
+  border: 2px solid transparent;
+  border-radius: 10px;
+  background: #f0eeec;
+  cursor: pointer;
+}
+
+.renter-detail-thumb.is-active {
+  border-color: #6530f5;
+}
+
+.renter-detail-thumb img,
+.renter-detail-thumb video {
+  display: block;
+  width: 72px;
+  height: 54px;
+  object-fit: cover;
+  background: #000;
+}

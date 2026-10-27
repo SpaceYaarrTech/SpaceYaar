@@ -1,8 +1,9 @@
 import { NextResponse } from "next/server";
 import { parseListingDraft } from "@/lib/api/listing-input";
+import { listingMediaBucket } from "@/lib/listing-media";
 import { createClient } from "@/lib/supabase/server";
 
-const PUBLIC_LISTING_COLUMNS = "id, title, description, property_type, area_value, area_unit, price_amount, price_model, min_booking_days, city, state, pincode, amenities, latitude, longitude, created_at, listing_photos(id, storage_path, label, position)";
+const PUBLIC_LISTING_COLUMNS = "id, title, description, property_type, area_value, area_unit, price_amount, price_model, min_booking_days, city, state, pincode, amenities, latitude, longitude, created_at, listing_photos(*)";
 
 export async function GET(request: Request) {
   try {
@@ -39,7 +40,7 @@ export async function GET(request: Request) {
         .sort((first, second) => first.position - second.position)
         .map((photo) => ({
           ...photo,
-          image_url: supabase.storage.from("listing-photos").getPublicUrl(photo.storage_path).data.publicUrl,
+          image_url: supabase.storage.from(listingMediaBucket(photo.media_type)).getPublicUrl(photo.storage_path).data.publicUrl,
         })),
     }));
 
