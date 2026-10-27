@@ -149,7 +149,7 @@ export function PhoneOtpLogin() {
             type="button"
             className="icon-back-button"
             aria-label="Go back"
-            onClick={() => router.push("/language")}
+            onClick={() => router.push("/onboarding")}
           >
             <svg viewBox="0 0 24 24" aria-hidden="true">
               <path d="M15 18l-6-6 6-6" />
