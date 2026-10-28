@@ -427,7 +427,7 @@ export function OwnerHome() {
     const documents = Object.entries(documentFiles);
     const photoCount = photos.filter(([, photo]) => !photo.isVideo).length;
     if (photos.length < LISTING_MIN_MEDIA || photoCount < LISTING_MIN_IMAGES) {
-      setSubmissionError("Add at least 2 photos or videos (including at least one photo) before submitting.");
+      setSubmissionError("Add at least 2 space photos before submitting.");
       return;
     }
     if (!documentFiles["Aadhaar Card"]) {
@@ -548,7 +548,7 @@ export function OwnerHome() {
 
     if (currentStep === 5) {
       if (mediaCount < LISTING_MIN_MEDIA || imageCount < LISTING_MIN_IMAGES) {
-        setStepError("Add at least 2 photos or videos (including at least one photo) to continue.");
+        setStepError("Add at least 2 space photos to continue.");
         return;
       }
       if (!documentFiles["Aadhaar Card"]) {
@@ -937,7 +937,7 @@ export function OwnerHome() {
       <section className="owner-upload-section">
         <h2>Space Photos &amp; Videos</h2>
         <p className="owner-upload-count" role="status">
-          {mediaCount} of {PHOTO_OPTIONS.length} added · minimum {LISTING_MIN_MEDIA} (including at least one photo)
+          {imageCount} of {PHOTO_OPTIONS.length} photos added · minimum {LISTING_MIN_IMAGES}
         </p>
         <div className="owner-upload-grid">
           {PHOTO_OPTIONS.map((photo) => {

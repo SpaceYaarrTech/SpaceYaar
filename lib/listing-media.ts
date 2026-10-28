@@ -13,7 +13,7 @@ export const MAX_IMAGE_BYTES = 15 * 1024 * 1024; // picked limit; compressed bef
 export const VIDEO_MIME_TYPES = ["video/mp4", "video/webm", "video/quicktime", "video/3gpp"];
 
 export const LISTING_MIN_MEDIA = 2;
-export const LISTING_MIN_IMAGES = 1;
+export const LISTING_MIN_IMAGES = 2;
 
 export type ListingMediaType = "image" | "video";
 
