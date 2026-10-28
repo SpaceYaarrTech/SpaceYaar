@@ -2,6 +2,9 @@ import { NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 
+const errorMessage = (error: { message: string } | null, fallback: string) =>
+  error?.message.trim() || fallback;
+
 export async function POST(_request: Request, context: { params: Promise<{ id: string }> }) {
   try {
     const { id } = await context.params;
@@ -13,7 +16,9 @@ export async function POST(_request: Request, context: { params: Promise<{ id: s
       .from("listing_photos")
       .select("id", { count: "exact", head: true })
       .eq("listing_id", id);
-    if (photoError) return NextResponse.json({ error: photoError.message }, { status: 400 });
+    if (photoError) {
+      return NextResponse.json({ error: errorMessage(photoError, "Could not verify listing photos.") }, { status: 400 });
+    }
 
     const { count: imageCount, error: imageError } = await supabase
       .from("listing_photos")
@@ -21,7 +26,7 @@ export async function POST(_request: Request, context: { params: Promise<{ id: s
       .eq("listing_id", id)
       .eq("media_type", "image");
     if (imageError && !imageError.message.includes("media_type")) {
-      return NextResponse.json({ error: imageError.message }, { status: 400 });
+      return NextResponse.json({ error: errorMessage(imageError, "Could not verify listing photos.") }, { status: 400 });
     }
     const eligibleImageCount = imageError ? photoCount ?? 0 : imageCount ?? 0;
 
@@ -30,7 +35,9 @@ export async function POST(_request: Request, context: { params: Promise<{ id: s
       .select("id", { count: "exact", head: true })
       .eq("listing_id", id)
       .eq("document_type", "Aadhaar Card");
-    if (aadhaarError) return NextResponse.json({ error: aadhaarError.message }, { status: 400 });
+    if (aadhaarError) {
+      return NextResponse.json({ error: errorMessage(aadhaarError, "Could not verify the Aadhaar document. Please try again.") }, { status: 400 });
+    }
 
     if (!photoCount || photoCount < 2 || eligibleImageCount < 1) {
       return NextResponse.json({ error: "Add at least two space photos (or one photo plus one video) before submitting." }, { status: 400 });
@@ -52,8 +59,15 @@ export async function POST(_request: Request, context: { params: Promise<{ id: s
       .eq("owner_id", user.id)
       .in("status", ["draft", "rejected"])
       .select("id, status")
-      .single();
-    if (error) return NextResponse.json({ error: error.message }, { status: 400 });
+      .maybeSingle();
+    if (error) {
+      return NextResponse.json({ error: errorMessage(error, "Could not update this listing. Please refresh and try again.") }, { status: 400 });
+    }
+    if (!data) {
+      return NextResponse.json({
+        error: "This listing was not found or is no longer an editable draft. Refresh your listings and try again.",
+      }, { status: 409 });
+    }
 
     // A resubmission starts a fresh review: drop review-stage rows from any
     // previous round so the owner's progress screen begins from step one.
