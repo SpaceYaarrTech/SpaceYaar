@@ -5,11 +5,13 @@ import { useRouter } from "next/navigation";
 import { ArrowLeft, Check, FileText, ImageUp, Info, MapPin, Pencil, Star } from "lucide-react";
 import { useEffect, useMemo, useRef, useState, type ChangeEvent } from "react";
 import { PricingAvailabilityStep } from "@/components/owner/PricingAvailabilityStep";
+import { LoginGateModal } from "@/components/auth/LoginGateModal";
 import { PrimaryButton } from "@/components/ui/PrimaryButton";
 import { MAP_CONFIG } from "@/lib/maps/map-config";
 import type { LocationSearchResult } from "@/lib/maps/geocoding";
 import { createClient } from "@/lib/supabase/client";
 import { isAuthBypassEnabled } from "@/lib/auth/auth-bypass";
+import { isGuestLoginRequired } from "@/lib/auth/guest-session";
 import { savePreviewListing } from "@/lib/owner/host-data";
 import {
   LISTING_MIN_IMAGES,
@@ -188,6 +190,7 @@ export function OwnerHome() {
   const [draftListingId, setDraftListingId] = useState<string | null>(null);
   const [isSubmittingListing, setIsSubmittingListing] = useState(false);
   const [submissionError, setSubmissionError] = useState("");
+  const [loginGate, setLoginGate] = useState(false);
   const [stepError, setStepError] = useState("");
   const [address, setAddress] = useState("");
   const [pincode, setPincode] = useState("");
@@ -374,6 +377,10 @@ export function OwnerHome() {
   const handleSubmitListing = async () => {
     if (isSubmittingListing) return;
     setSubmissionError("");
+    if (await isGuestLoginRequired()) {
+      setLoginGate(true);
+      return;
+    }
     if (isAuthBypassEnabled()) {
       setIsSubmittingListing(true);
       try {
@@ -1239,6 +1246,15 @@ export function OwnerHome() {
 
         {showReview ? renderStepReview() : renderCurrentStep()}
       </div>
+
+      {loginGate && (
+        <LoginGateModal
+          title="Continue with listing"
+          description="Please log in to submit your listing. Continue with Google and you'll pick up right where you left off."
+          nextPath="/owner"
+          onClose={() => setLoginGate(false)}
+        />
+      )}
     </main>
   );
 }

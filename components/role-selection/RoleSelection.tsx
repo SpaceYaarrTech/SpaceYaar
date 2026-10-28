@@ -6,6 +6,7 @@ import { motion } from "motion/react";
 import { ROLE_OPTIONS } from "@/lib/roles/role-config";
 import { setSelectedRole } from "@/lib/roles/role-storage";
 import { isAuthBypassEnabled } from "@/lib/auth/auth-bypass";
+import { isGuestMode } from "@/lib/auth/guest-session";
 import type { UserRole } from "@/types/roles";
 
 export function RoleSelection() {
@@ -19,7 +20,7 @@ export function RoleSelection() {
     setIsNavigating(true);
     setRoleError("");
     try {
-      if (!isAuthBypassEnabled()) {
+      if (!isAuthBypassEnabled() && !isGuestMode()) {
         const response = await fetch("/api/profile", {
           method: "PATCH",
           headers: { "Content-Type": "application/json" },

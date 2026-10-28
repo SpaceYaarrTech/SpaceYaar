@@ -3977,6 +3977,7 @@ a { color: inherit; text-decoration: none; }
 .auth-aside-content h1 { max-width: 460px; margin: 18px 0; font-size: clamp(36px, 10vw, 52px); line-height: 1; letter-spacing: -.07em; }
 .auth-aside-content p { max-width: 330px; color: rgba(255,255,255,.76); line-height: 1.65; }
 .auth-panel { display: flex; align-items: center; justify-content: center; padding: 24px 18px 30px; }
+.auth-panel:only-child { min-height: 100svh; }
 .auth-form-wrap { width: min(100%, 430px); animation: auth-rise .55s .08s ease both; }
 .auth-form-wrap > .eyebrow { display: block; margin-bottom: 18px; }
 .auth-form-wrap h2 { margin: 0; font-size: 42px; letter-spacing: -.06em; line-height: 1.1; }
@@ -4566,6 +4567,114 @@ a { color: inherit; text-decoration: none; }
 .otp-terms span {
   color: var(--color-brand);
   font-weight: 600;
+}
+
+.guest-button {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 100%;
+  min-height: 48px;
+  margin-top: 12px;
+  border: 1px solid transparent;
+  border-radius: 12px;
+  background: transparent;
+  color: #4a4543;
+  font-size: 14px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background 0.18s ease, color 0.18s ease;
+}
+
+.guest-button:hover {
+  background: #f6f3f1;
+  color: var(--color-text-primary);
+}
+
+.login-gate-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 1200;
+  display: grid;
+  align-items: end;
+  justify-items: center;
+  padding: 16px;
+  background: rgba(20, 18, 17, 0.56);
+}
+
+.login-gate-dialog {
+  width: min(100%, 430px);
+  padding: 26px 22px 20px;
+  border: 1px solid var(--color-border);
+  border-radius: 20px;
+  background: #ffffff;
+  color: var(--color-text-primary);
+  text-align: center;
+  box-shadow: 0 18px 52px rgba(0, 0, 0, 0.18);
+  animation: auth-rise 0.35s ease both;
+}
+
+.login-gate-mark {
+  display: grid;
+  place-items: center;
+  width: 46px;
+  height: 46px;
+  margin: 0 auto 14px;
+  border-radius: 50%;
+  background: #f3f1f0;
+  color: var(--color-brand);
+}
+
+.login-gate-mark svg {
+  width: 22px;
+  height: 22px;
+}
+
+.login-gate-dialog h2 {
+  margin: 0;
+  font-size: 21px;
+  letter-spacing: -0.02em;
+}
+
+.login-gate-copy {
+  margin: 8px auto 18px;
+  max-width: 320px;
+  color: var(--color-text-secondary);
+  font-size: 13px;
+  line-height: 1.6;
+}
+
+.login-gate-dialog .google-button {
+  border-radius: 12px;
+}
+
+.login-gate-error {
+  margin: 12px 0 0;
+  color: var(--color-error);
+  font-size: 13px;
+}
+
+.login-gate-later {
+  width: 100%;
+  min-height: 44px;
+  margin-top: 10px;
+  border: 0;
+  border-radius: 12px;
+  background: transparent;
+  color: #76706c;
+  font-size: 14px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.login-gate-later:not(:disabled):hover {
+  background: #f6f3f1;
+  color: var(--color-text-primary);
+}
+
+.login-gate-later:disabled {
+  opacity: 0.6;
+  cursor: wait;
 }
 
 .sr-only {

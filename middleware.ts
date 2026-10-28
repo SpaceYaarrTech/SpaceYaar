@@ -2,7 +2,9 @@ import { createServerClient } from "@supabase/ssr";
 import { NextResponse, type NextRequest } from "next/server";
 
 export async function middleware(request: NextRequest) {
-  const isOwnerRoute = request.nextUrl.pathname === "/owner" || request.nextUrl.pathname.startsWith("/owner/");
+  // /owner itself is the listing wizard and stays reachable for guests (they are
+  // asked to sign in when submitting); every deeper host route still needs a user.
+  const isOwnerRoute = request.nextUrl.pathname.startsWith("/owner/");
   const isAdminRoute = request.nextUrl.pathname === "/admin" || request.nextUrl.pathname.startsWith("/admin/");
   const previewAuthBypass = process.env.NODE_ENV === "development" && process.env.NEXT_PUBLIC_AUTH_BYPASS === "true";
   if (isOwnerRoute && previewAuthBypass) return NextResponse.next({ request });

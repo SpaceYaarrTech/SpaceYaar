@@ -5,7 +5,9 @@ import Link from "next/link";
 import { ArrowLeft, Heart, MapPin, ShieldCheck } from "lucide-react";
 import { useParams, useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
+import { LoginGateModal } from "@/components/auth/LoginGateModal";
 import { RenterBottomNavigation } from "@/components/renter/RenterBottomNavigation";
+import { isGuestLoginRequired } from "@/lib/auth/guest-session";
 
 type ListingDetails = {
   id: string;
@@ -34,6 +36,7 @@ export default function ListingDetailsPage() {
   const [actionError, setActionError] = useState("");
   const [saving, setSaving] = useState(false);
   const [activeMediaIndex, setActiveMediaIndex] = useState(0);
+  const [loginGate, setLoginGate] = useState<{ nextPath: string } | null>(null);
 
   useEffect(() => {
     let current = true;
@@ -67,6 +70,10 @@ export default function ListingDetailsPage() {
 
   const toggleSaved = async () => {
     if (!listing || saving) return;
+    if (await isGuestLoginRequired()) {
+      setLoginGate({ nextPath: `/listings/${encodeURIComponent(id)}` });
+      return;
+    }
     setSaving(true);
     setActionError("");
     try {
@@ -83,6 +90,15 @@ export default function ListingDetailsPage() {
     } finally {
       setSaving(false);
     }
+  };
+
+  const handleRequestToBook = async () => {
+    const nextPath = `/renter?bookListing=${encodeURIComponent(id)}`;
+    if (await isGuestLoginRequired()) {
+      setLoginGate({ nextPath });
+      return;
+    }
+    router.push(nextPath);
   };
 
   if (loading) return <main className="renter-flow-page"><p className="renter-flow-state" role="status">Loading space…</p><RenterBottomNavigation /></main>;
@@ -143,8 +159,16 @@ export default function ListingDetailsPage() {
           </div>
         )}
         {actionError && <p className="renter-flow-error" role="alert">{actionError}</p>}
-        <button type="button" className="renter-detail-book" onClick={() => router.push(`/renter?bookListing=${encodeURIComponent(listing.id)}`)}>Request to book</button>
+        <button type="button" className="renter-detail-book" onClick={handleRequestToBook}>Request to book</button>
       </section>
+      {loginGate && (
+        <LoginGateModal
+          title="Continue with booking"
+          description="Please log in to request this space. Continue with Google and you'll pick up right where you left off."
+          nextPath={loginGate.nextPath}
+          onClose={() => setLoginGate(null)}
+        />
+      )}
       <RenterBottomNavigation />
     </main>
   );

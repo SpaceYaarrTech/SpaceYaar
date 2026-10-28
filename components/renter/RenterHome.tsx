@@ -12,7 +12,9 @@ import {
   Zap,
 } from "lucide-react";
 import { LISTINGS, type Listing } from "@/data/listings";
+import { LoginGateModal } from "@/components/auth/LoginGateModal";
 import { RenterBottomNavigation } from "@/components/renter/RenterBottomNavigation";
+import { isGuestLoginRequired } from "@/lib/auth/guest-session";
 import { getSelectedRole, setSelectedRole } from "@/lib/roles/role-storage";
 import type { UserRole } from "@/types/roles";
 
@@ -199,6 +201,7 @@ export function RenterHome({ onRoleChange }: RenterHomeProps = {}) {
   const [bookingError, setBookingError] = useState("");
   const [bookingSuccess, setBookingSuccess] = useState("");
   const [isSubmittingBooking, setIsSubmittingBooking] = useState(false);
+  const [loginGate, setLoginGate] = useState<{ title: string; description: string; nextPath: string } | null>(null);
   const handledRebookId = useRef<string | null>(null);
 
   useEffect(() => {
@@ -256,7 +259,15 @@ export function RenterHome({ onRoleChange }: RenterHomeProps = {}) {
     };
   }, []);
 
-  const openBookingRequest = (listing: RenterListing) => {
+  const openBookingRequest = async (listing: RenterListing) => {
+    if (await isGuestLoginRequired()) {
+      setLoginGate({
+        title: "Continue with booking",
+        description: "Please log in to request this space. Continue with Google and you'll pick up right where you left off.",
+        nextPath: `/renter?bookListing=${encodeURIComponent(listing.id)}`,
+      });
+      return;
+    }
     const startDate = new Date();
     startDate.setDate(startDate.getDate() + 1);
     const endDate = new Date(startDate);
@@ -528,6 +539,15 @@ export function RenterHome({ onRoleChange }: RenterHomeProps = {}) {
             </div>
           </form>
         </div>
+      )}
+
+      {loginGate && (
+        <LoginGateModal
+          title={loginGate.title}
+          description={loginGate.description}
+          nextPath={loginGate.nextPath}
+          onClose={() => setLoginGate(null)}
+        />
       )}
 
       <RenterBottomNavigation />

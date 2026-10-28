@@ -5,6 +5,7 @@ import Image from "next/image";
 import { useRouter } from "next/navigation";
 import { motion, useReducedMotion, type PanInfo } from "motion/react";
 import { onboardingImages as slides } from "@/lib/app-images";
+import { setGuestMode } from "@/lib/auth/guest-session";
 
 function wrapIndex(index: number) { return (index + slides.length) % slides.length; }
 
@@ -34,7 +35,16 @@ export function OnboardingCarousel() {
     if (info.offset.x > 0 && activeIndex > 0) goTo(activeIndex - 1, -1);
   };
 
-  const next = () => activeIndex === slides.length - 1 ? router.push("/login") : goTo(activeIndex + 1, 1);
+  // Onboarding ends by going straight to role selection. The login screen is
+  // intentionally skipped here (it stays available at /login); we mark the visitor
+  // as a guest so they're asked to sign in at the gated moments instead — e.g.
+  // submitting a listing or booking/saving a space.
+  const finishOnboarding = () => {
+    setGuestMode();
+    router.push("/role-selection");
+  };
+
+  const next = () => activeIndex === slides.length - 1 ? finishOnboarding() : goTo(activeIndex + 1, 1);
   const variants = { enter: (value: number) => ({ opacity: 0, x: prefersReducedMotion ? 0 : value * 34 }), center: { opacity: 1, x: 0 }, exit: (value: number) => ({ opacity: 0, x: prefersReducedMotion ? 0 : value * -34 }) };
 
   return (

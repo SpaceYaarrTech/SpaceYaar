@@ -4,11 +4,15 @@ import { createClient } from "@/lib/supabase/client";
 const getErrorMessage = (error: unknown) =>
   error instanceof Error ? error.message : "Authentication is temporarily unavailable. Please try again.";
 
-export async function signInWithGoogle(): Promise<AuthResult> {
+export async function signInWithGoogle(nextPath?: string): Promise<AuthResult> {
   try {
+    const callbackUrl = new URL("/auth/callback", window.location.origin);
+    if (nextPath && nextPath.startsWith("/") && !nextPath.startsWith("//")) {
+      callbackUrl.searchParams.set("next", nextPath);
+    }
     const { error } = await createClient().auth.signInWithOAuth({
       provider: "google",
-      options: { redirectTo: `${window.location.origin}/auth/callback` },
+      options: { redirectTo: callbackUrl.toString() },
     });
     return error ? { ok: false, message: error.message } : { ok: true };
   } catch (error) {
