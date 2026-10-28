@@ -23,12 +23,7 @@ export async function POST(_request: Request, context: { params: Promise<{ id: s
     if (imageError && !imageError.message.includes("media_type")) {
       return NextResponse.json({ error: imageError.message }, { status: 400 });
     }
-
-    const { count: documentCount, error: documentError } = await supabase
-      .from("listing_documents")
-      .select("id", { count: "exact", head: true })
-      .eq("listing_id", id);
-    if (documentError) return NextResponse.json({ error: documentError.message }, { status: 400 });
+    const eligibleImageCount = imageError ? photoCount ?? 0 : imageCount ?? 0;
 
     const { count: aadhaarCount, error: aadhaarError } = await supabase
       .from("listing_documents")
@@ -37,11 +32,11 @@ export async function POST(_request: Request, context: { params: Promise<{ id: s
       .eq("document_type", "Aadhaar Card");
     if (aadhaarError) return NextResponse.json({ error: aadhaarError.message }, { status: 400 });
 
-    if (!photoCount || photoCount < 2 || (imageCount ?? 0) < 1) {
+    if (!photoCount || photoCount < 2 || eligibleImageCount < 1) {
       return NextResponse.json({ error: "Add at least two space photos (or one photo plus one video) before submitting." }, { status: 400 });
     }
 
-    if (!documentCount || !aadhaarCount) {
+    if (!aadhaarCount) {
       return NextResponse.json({ error: "Upload your Aadhaar card before submitting." }, { status: 400 });
     }
 
