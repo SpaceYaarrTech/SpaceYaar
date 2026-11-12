@@ -273,7 +273,6 @@ export function HostListingDetails() {
     setSaving(true);
     setSaveError("");
     setSaved(false);
-    const duration = listing.min_booking_days >= 7 ? "1 Week" : listing.min_booking_days >= 3 ? "3 Days" : "1 Day";
     const payload = {
       propertyType: listing.property_type,
       floorLevel: listing.floor_level,
@@ -292,9 +291,15 @@ export function HostListingDetails() {
       priceModel: listing.price_model,
       rate,
       securityAmount: String(listing.security_amount),
-      refundDays: String(listing.refund_within_days),
+      // A null refund timeline means "no deposit taken" and must round-trip
+      // as empty rather than the string "null".
+      refundDays: listing.refund_within_days === null ? "" : String(listing.refund_within_days),
       availabilityDays,
-      minimumBookingDuration: duration,
+      // Send normalized days directly — mapping through the legacy label
+      // list would turn any value above 7 back into "1 Week" (7 days).
+      minimumBookingDays: listing.min_booking_days,
+      maximumBookingDays: listing.max_booking_days ?? "",
+      areaOverridden: listing.area_overridden ?? false,
       address,
       pincode: listing.pincode || "",
       city,

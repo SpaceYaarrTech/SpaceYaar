@@ -2,7 +2,7 @@
 
 import dynamic from "next/dynamic";
 import { useRouter } from "next/navigation";
-import { ArrowLeft, Check, FileText, ImageUp, Info, MapPin, Pencil, Star } from "lucide-react";
+import { ArrowLeft, Check, FileText, ImageUp, Info, MapPin, Pencil } from "lucide-react";
 import { useEffect, useMemo, useRef, useState, type ChangeEvent } from "react";
 import { PricingAvailabilityStep } from "@/components/owner/PricingAvailabilityStep";
 import { LoginGateModal } from "@/components/auth/LoginGateModal";
@@ -13,6 +13,24 @@ import { createClient } from "@/lib/supabase/client";
 import { isAuthBypassEnabled } from "@/lib/auth/auth-bypass";
 import { isGuestLoginRequired } from "@/lib/auth/guest-session";
 import { savePreviewListing } from "@/lib/owner/host-data";
+import { track } from "@/lib/analytics";
+import { durationDays, formatINR } from "@/lib/listing/config";
+import {
+  LISTING_DRAFT_VERSION,
+  clearListingDraft,
+  loadListingDraft,
+  saveListingDraft,
+  type ListingDraft,
+} from "@/lib/listing/draft-storage";
+import {
+  firstError,
+  validateStep1,
+  validateStep2,
+  validateStep5,
+  validateStep6,
+  type FieldErrors,
+  type Step4Values,
+} from "@/lib/listing/validation";
 import {
   LISTING_MIN_IMAGES,
   LISTING_MIN_MEDIA,
@@ -162,7 +180,6 @@ export function OwnerHome() {
 
   const [selectedSpaceType, setSelectedSpaceType] = useState("");
   const [selectedFloor, setSelectedFloor] = useState("");
-  const [floorError, setFloorError] = useState("");
   const [spaceArea, setSpaceArea] = useState("");
   const [spaceAreaUnit, setSpaceAreaUnit] = useState<SpaceAreaUnit>("Sq. Feet");
   const [description, setDescription] = useState("");
@@ -175,6 +192,8 @@ export function OwnerHome() {
   const [temperature, setTemperature] = useState("");
   const [temperatureUnit, setTemperatureUnit] = useState<TemperatureUnit>("Celsius");
   const [selectedLoadingFeatures, setSelectedLoadingFeatures] = useState<string[]>([]);
+  const [areaOverridden, setAreaOverridden] = useState(false);
+  const [areaOverrideActive, setAreaOverrideActive] = useState(false);
 
   const [selectedAmenities, setSelectedAmenities] = useState<string[]>([]);
 
@@ -183,15 +202,23 @@ export function OwnerHome() {
   const [securityAmount, setSecurityAmount] = useState("");
   const [refundDays, setRefundDays] = useState("");
   const [availabilityDays, setAvailabilityDays] = useState<string[]>([]);
-  const [minimumBookingDuration, setMinimumBookingDuration] = useState("");
+  const [minimumBookingDuration, setMinimumBookingDuration] = useState("45 Days");
+  const [minimumBookingCustomDays, setMinimumBookingCustomDays] = useState("45");
+  const [maximumBookingDuration, setMaximumBookingDuration] = useState("11 Months");
+  const [maximumBookingCustomDays, setMaximumBookingCustomDays] = useState("330");
 
-  const [photoFiles, setPhotoFiles] = useState<Record<string, { name: string; previewUrl: string; file: File; isVideo: boolean }>>({});
+  const [photoFiles, setPhotoFiles] = useState<Record<string, { name: string; previewUrl: string; file: File; isVideo: boolean; isCompressing?: boolean }>>({});
   const [documentFiles, setDocumentFiles] = useState<Record<string, { name: string; file: File }>>({});
   const [draftListingId, setDraftListingId] = useState<string | null>(null);
   const [isSubmittingListing, setIsSubmittingListing] = useState(false);
   const [submissionError, setSubmissionError] = useState("");
   const [loginGate, setLoginGate] = useState(false);
   const [stepError, setStepError] = useState("");
+  const [stepErrors, setStepErrors] = useState<FieldErrors>({});
+  const [errorRevealTick, setErrorRevealTick] = useState(0);
+  const [isSavingStep, setIsSavingStep] = useState(false);
+  const [draftNotice, setDraftNotice] = useState("");
+  const [editingFromReview, setEditingFromReview] = useState<number | null>(null);
   const [address, setAddress] = useState("");
   const [pincode, setPincode] = useState("");
   const [city, setCity] = useState("");
@@ -202,6 +229,12 @@ export function OwnerHome() {
   const mapApiRef = useRef<any>(null);
   const photoPreviewUrlsRef = useRef<string[]>([]);
 
+  // Draft lifecycle refs: hydration gates the autosave, and a restored
+  // location must not be overwritten by a fresh geolocation fix.
+  const hydratedRef = useRef(false);
+  const hasInteractedRef = useRef(false);
+  const locationRestoredRef = useRef(false);
+
   useEffect(() => {
     if (typeof navigator === "undefined" || !("geolocation" in navigator)) {
       return;
@@ -209,6 +242,7 @@ export function OwnerHome() {
 
     navigator.geolocation.getCurrentPosition(
       ({ coords }) => {
+        if (locationRestoredRef.current) return;
         const nextLocation: LocationSearchResult = {
           latitude: coords.latitude,
           longitude: coords.longitude,
@@ -220,6 +254,7 @@ export function OwnerHome() {
         setSelectedLocation(nextLocation);
       },
       () => {
+        if (locationRestoredRef.current) return;
         setSelectedLocation(defaultLocation);
       },
       {
@@ -230,10 +265,72 @@ export function OwnerHome() {
     );
   }, []);
 
+  // Restore a saved draft on mount (handoff §4: refresh keeps progress).
+  useEffect(() => {
+    const draft = loadListingDraft();
+    if (draft) {
+      const values = draft.values;
+      setSelectedSpaceType(values.selectedSpaceType ?? "");
+      setSelectedFloor(values.selectedFloor ?? "");
+      setSpaceArea(values.spaceArea ?? "");
+      setSpaceAreaUnit((values.spaceAreaUnit as SpaceAreaUnit) ?? "Sq. Feet");
+      setDescription(values.description ?? "");
+      setSelectedUsages(values.selectedUsages ?? []);
+      setLength(values.length ?? "");
+      setBreadth(values.breadth ?? "");
+      setHeight(values.height ?? "");
+      setDimensionUnit((values.dimensionUnit as DimensionUnit) ?? "Ft");
+      setTemperature(values.temperature ?? "");
+      setTemperatureUnit((values.temperatureUnit as TemperatureUnit) ?? "Celsius");
+      setSelectedLoadingFeatures(values.selectedLoadingFeatures ?? []);
+      setAreaOverridden(Boolean(values.areaOverridden));
+      setSelectedAmenities(values.selectedAmenities ?? []);
+      setPriceModel(values.priceModel ?? "");
+      setRate(values.rate ?? "");
+      setSecurityAmount(values.securityAmount ?? "");
+      setRefundDays(values.refundDays ?? "");
+      setAvailabilityDays(values.availabilityDays ?? []);
+      setMinimumBookingDuration(values.minimumBookingDuration ?? "45 Days");
+      setMinimumBookingCustomDays(values.minimumBookingCustomDays ?? "45");
+      setMaximumBookingDuration(values.maximumBookingDuration ?? "11 Months");
+      setMaximumBookingCustomDays(values.maximumBookingCustomDays ?? "330");
+      setAddress(values.address ?? "");
+      setPincode(values.pincode ?? "");
+      setCity(values.city ?? "");
+      setState(values.state ?? "");
+      setAccessInstructions(values.accessInstructions ?? "");
+      if (values.selectedLocation) setSelectedLocation(values.selectedLocation);
+      locationRestoredRef.current = true;
+      setCurrentStep(Math.min(Math.max(draft.currentStep, 1), totalSteps));
+      setShowReview(Boolean(draft.showReview));
+      setEditingFromReview(typeof draft.editingFromReview === "number" ? draft.editingFromReview : null);
+      setDraftListingId(draft.draftListingId ?? null);
+      setDraftNotice("Picked up where you left off.");
+    }
+    hydratedRef.current = true;
+  }, []);
+
+  // Debounced autosave (handoff §18): mirrors state to storage 1s after the
+  // last change so a refresh mid-step never loses edits. Skipped until the
+  // draft has hydrated and the owner has actually interacted.
+  useEffect(() => {
+    if (!hydratedRef.current || !hasInteractedRef.current) return;
+    const timer = window.setTimeout(() => {
+      saveListingDraft(snapshotDraft(currentStep, showReview));
+    }, 1000);
+    return () => window.clearTimeout(timer);
+  });
+
+  // The restore notice is informational only — clear it on its own.
+  useEffect(() => {
+    if (!draftNotice) return;
+    const timer = window.setTimeout(() => setDraftNotice(""), 4000);
+    return () => window.clearTimeout(timer);
+  }, [draftNotice]);
+
   const descriptionLength = useMemo(() => description.length, [description]);
   const accessLength = useMemo(() => accessInstructions.length, [accessInstructions]);
   const progressWidth = useMemo(() => `${(currentStep / totalSteps) * 100}%`, [currentStep]);
-
   const areaValue = useMemo(() => {
     const numericLength = Number.parseFloat(length || "0");
     const numericBreadth = Number.parseFloat(breadth || "0");
@@ -303,11 +400,244 @@ export function OwnerHome() {
     );
   };
 
+  const snapshotDraft = (step: number, review: boolean): ListingDraft => ({
+    version: LISTING_DRAFT_VERSION,
+    updatedAt: new Date().toISOString(),
+    currentStep: step,
+    showReview: review,
+    editingFromReview,
+    draftListingId,
+    values: {
+      selectedSpaceType,
+      selectedFloor,
+      spaceArea,
+      spaceAreaUnit,
+      description,
+      selectedUsages,
+      length,
+      breadth,
+      height,
+      dimensionUnit,
+      temperature,
+      temperatureUnit,
+      selectedLoadingFeatures,
+      areaOverridden,
+      selectedAmenities,
+      priceModel,
+      rate,
+      securityAmount,
+      refundDays,
+      availabilityDays,
+      minimumBookingDuration,
+      minimumBookingCustomDays,
+      maximumBookingDuration,
+      maximumBookingCustomDays,
+      address,
+      pincode,
+      city,
+      state,
+      accessInstructions,
+      selectedLocation: {
+        latitude: selectedLocation.latitude,
+        longitude: selectedLocation.longitude,
+        displayName: selectedLocation.displayName,
+        city: selectedLocation.city ?? "",
+        area: selectedLocation.area ?? "",
+      },
+    },
+  });
+
+  // Persist the draft before navigating; a failed write must not lose the
+  // step's data or move the owner forward (handoff §18).
+  const persistStep = async (step: number, review: boolean): Promise<boolean> => {
+    setIsSavingStep(true);
+    try {
+      // Yield once so the Saving state gets a chance to paint.
+      await new Promise((resolve) => window.setTimeout(resolve, 0));
+      const saved = saveListingDraft(snapshotDraft(step, review));
+      if (!saved) {
+        setStepError("Couldn't save your progress. Check that browser storage is available, then try again.");
+      }
+      return saved;
+    } finally {
+      setIsSavingStep(false);
+    }
+  };
+
+  const clearFieldError = (field: string) =>
+    setStepErrors((current) => {
+      if (!current[field]) return current;
+      const next = { ...current };
+      delete next[field];
+      return next;
+    });
+
+  const stepBanner = stepError || firstError(stepErrors);
+
+  const step4Values: Step4Values = useMemo(
+    () => ({
+      priceModel,
+      rate,
+      securityAmount,
+      refundDays,
+      availabilityDays,
+      minimumBookingDuration,
+      minimumBookingCustomDays,
+      maximumBookingDuration,
+      maximumBookingCustomDays,
+    }),
+    [
+      priceModel,
+      rate,
+      securityAmount,
+      refundDays,
+      availabilityDays,
+      minimumBookingDuration,
+      minimumBookingCustomDays,
+      maximumBookingDuration,
+      maximumBookingCustomDays,
+    ],
+  );
+
+  const setStep4Values = (patch: Partial<Step4Values>) => {
+    if ("priceModel" in patch) {
+      setPriceModel(patch.priceModel ?? "");
+      clearFieldError("priceModel");
+    }
+    if ("rate" in patch) {
+      setRate(patch.rate ?? "");
+      clearFieldError("rate");
+    }
+    if ("securityAmount" in patch) {
+      const nextSecurity = patch.securityAmount ?? "";
+      setSecurityAmount(nextSecurity);
+      // A zero deposit disables and clears the refund timeline (§8.3).
+      if (!nextSecurity || Number(nextSecurity.replace(/,/g, "")) === 0) setRefundDays("");
+      clearFieldError("security");
+      clearFieldError("refund");
+    }
+    if ("refundDays" in patch) {
+      setRefundDays(patch.refundDays ?? "");
+      clearFieldError("refund");
+    }
+    if ("availabilityDays" in patch) {
+      setAvailabilityDays(patch.availabilityDays ?? []);
+      clearFieldError("availabilityDays");
+    }
+    if ("minimumBookingDuration" in patch) {
+      setMinimumBookingDuration(patch.minimumBookingDuration ?? "");
+      clearFieldError("minimumBookingDuration");
+    }
+    if ("minimumBookingCustomDays" in patch) {
+      setMinimumBookingCustomDays(patch.minimumBookingCustomDays ?? "");
+      clearFieldError("minimumBookingDuration");
+    }
+    if ("maximumBookingDuration" in patch) {
+      setMaximumBookingDuration(patch.maximumBookingDuration ?? "");
+      clearFieldError("maximumBookingDuration");
+    }
+    if ("maximumBookingCustomDays" in patch) {
+      setMaximumBookingCustomDays(patch.maximumBookingCustomDays ?? "");
+      clearFieldError("maximumBookingDuration");
+    }
+  };
+
+  const selectSpaceType = (id: string) => {
+    setSelectedSpaceType(id);
+    // Temperature fields only apply to temperature-controlled spaces (§6.3).
+    if (id !== "cold-storage" && id !== "climate-control") setTemperature("");
+    clearFieldError("spaceType");
+  };
+
+  const showTemperatureFields = selectedSpaceType === "cold-storage" || selectedSpaceType === "climate-control";
+
+  const removePhoto = (label: string) => {
+    setPhotoFiles((current) => {
+      const slot = current[label];
+      if (slot) {
+        URL.revokeObjectURL(slot.previewUrl);
+        photoPreviewUrlsRef.current = photoPreviewUrlsRef.current.filter((url) => url !== slot.previewUrl);
+      }
+      const next = { ...current };
+      delete next[label];
+      return next;
+    });
+    setStepError("");
+  };
+
+  const removeDocument = (name: string) => {
+    setDocumentFiles((current) => {
+      const next = { ...current };
+      delete next[name];
+      return next;
+    });
+  };
+
+  // Review → checklist edit is a one-step detour that returns to Review
+  // when the owner presses Save & Continue (handoff §11).
+  const editSection = (step: number) => {
+    setShowReview(false);
+    setCurrentStep(step);
+    setEditingFromReview(step);
+    setStepError("");
+    setStepErrors({});
+    track("listing_section_edited", { step });
+  };
+
+  const validateCurrentStep = (): FieldErrors => {
+    switch (currentStep) {
+      case 1:
+        return validateStep1({
+          spaceType: selectedSpaceType,
+          floor: selectedFloor,
+          area: spaceArea,
+          description,
+          usages: selectedUsages,
+        });
+      case 2:
+        return validateStep2({ length, breadth, height });
+      case 5:
+        return validateStep5({
+          mediaCount: Object.keys(photoFiles).length,
+          imageCount: Object.values(photoFiles).filter((photo) => !photo.isVideo).length,
+          hasAadhaar: Boolean(documentFiles["Aadhaar Card"]),
+        });
+      default:
+        // Step 3 needs nothing; Step 4 gates itself before calling
+        // onContinue; Step 6 validates in handleReview.
+        return {};
+    }
+  };
+
+  // Review preview derives from real wizard state (handoff §11 — no sample
+  // copy or hardcoded ratings).
+  const previewTitle = `${selectedSpaceType.replace(/-/g, " ") || "space"} in ${city || selectedLocation.city || "Kanpur"}`;
+  const previewPhoto = useMemo(
+    () => Object.values(photoFiles).find((photo) => !photo.isVideo) ?? Object.values(photoFiles)[0],
+    [photoFiles],
+  );
+  const previewTags = useMemo(() => {
+    const tags = [...selectedAmenities, ...selectedLoadingFeatures];
+    if (tags.length) return tags.slice(0, 5);
+    const spaceType = SPACE_TYPES.find((option) => option.id === selectedSpaceType);
+    return spaceType ? [spaceType.label] : [];
+  }, [selectedAmenities, selectedLoadingFeatures, selectedSpaceType]);
+
+  // Move focus to the first invalid control after a failed Save & Continue.
+  useEffect(() => {
+    if (!errorRevealTick) return;
+    document.querySelector<HTMLElement>('.owner-page [aria-invalid="true"]')?.focus();
+  }, [errorRevealTick]);
+
+  // Analytics: one listing_step_viewed per step/review transition (§19).
+  useEffect(() => {
+    track("listing_step_viewed", { step: currentStep, review: showReview });
+  }, [currentStep, showReview]);
+
   useEffect(() => () => {
     photoPreviewUrlsRef.current.forEach((previewUrl) => URL.revokeObjectURL(previewUrl));
   }, []);
 
-  const mediaCount = Object.keys(photoFiles).length;
   const imageCount = Object.values(photoFiles).filter((photo) => !photo.isVideo).length;
 
   const handleUpload = (label: string, event: ChangeEvent<HTMLInputElement>) => {
@@ -318,10 +648,12 @@ export function OwnerHome() {
     if (file.type.startsWith("video/")) {
       if (!isValidVideoMime(file)) {
         setStepError("Videos must be MP4, WebM or MOV.");
+        track("listing_photo_upload_failed", { reason: "invalid_video_type" });
         return;
       }
       if (file.size > MAX_VIDEO_BYTES) {
         setStepError(`Videos must be under 10 MB — this one is ${formatFileSize(file.size)}.`);
+        track("listing_photo_upload_failed", { reason: "video_too_large" });
         return;
       }
       const previewUrl = URL.createObjectURL(file);
@@ -331,15 +663,18 @@ export function OwnerHome() {
         ...current,
         [label]: { name: file.name, previewUrl, file, isVideo: true },
       }));
+      track("listing_photo_uploaded", { type: "video" });
       return;
     }
 
     if (!file.type.startsWith("image/")) {
       setStepError("Upload a photo or a video (MP4, WebM or MOV).");
+      track("listing_photo_upload_failed", { reason: "invalid_image_type" });
       return;
     }
     if (file.size > MAX_IMAGE_BYTES) {
       setStepError(`Photos must be under 15 MB — this one is ${formatFileSize(file.size)}.`);
+      track("listing_photo_upload_failed", { reason: "image_too_large" });
       return;
     }
 
@@ -348,35 +683,41 @@ export function OwnerHome() {
     setStepError("");
     setPhotoFiles((current) => ({
       ...current,
-      [label]: { name: file.name, previewUrl, file, isVideo: false },
+      [label]: { name: file.name, previewUrl, file, isVideo: false, isCompressing: true },
     }));
+    track("listing_photo_uploaded", { type: "image" });
 
     // Compress in the background so the pick interaction never waits on it.
     // The slot keeps the original until compression finishes (or is skipped).
-    void compressImageFile(file).then((compressed) => {
-      setPhotoFiles((current) => {
-        const slot = current[label];
-        if (!slot || slot.file !== file) return current;
-        return { ...current, [label]: { ...slot, file: compressed } };
+    void compressImageFile(file)
+      .then((compressed) => {
+        setPhotoFiles((current) => {
+          const slot = current[label];
+          if (!slot || slot.file !== file) return current;
+          return { ...current, [label]: { ...slot, file: compressed, isCompressing: false } };
+        });
+      })
+      .catch(() => {
+        // Keep the original when compression fails — upload still works.
+        setPhotoFiles((current) => {
+          const slot = current[label];
+          if (!slot || slot.file !== file) return current;
+          return { ...current, [label]: { ...slot, isCompressing: false } };
+        });
       });
-    });
   };
 
   const handleDocumentUpload = (label: string, event: ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0];
     if (!file) return;
     setDocumentFiles((current) => ({ ...current, [label]: { name: file.name, file } }));
-  };
-
-  const toggleAvailabilityDay = (day: string) => {
-    setAvailabilityDays((current) =>
-      current.includes(day) ? current.filter((item) => item !== day) : [...current, day],
-    );
+    track("listing_kyc_uploaded", { document: label });
   };
 
   const handleSubmitListing = async () => {
     if (isSubmittingListing) return;
     setSubmissionError("");
+    track("listing_submit_clicked");
     if (await isGuestLoginRequired()) {
       setLoginGate(true);
       return;
@@ -404,11 +745,14 @@ export function OwnerHome() {
           temperature_unit: temperatureUnit,
           usage_types: selectedUsages,
           loading_features: selectedLoadingFeatures,
-          price_amount: Number(rate) || 0,
+          price_amount: Number(rate.replace(/,/g, "")) || 0,
           price_model: priceModel,
-          security_amount: Number(securityAmount) || 0,
-          refund_within_days: Number(refundDays) || 1,
-          min_booking_days: minimumBookingDuration === "1 Week" ? 7 : minimumBookingDuration === "3 Days" ? 3 : 1,
+          security_amount: Number(securityAmount.replace(/,/g, "")) || 0,
+          // A ₹0 deposit stores no refund timeline (handoff §8.3/§8.4).
+          refund_within_days: securityAmount && Number(securityAmount.replace(/,/g, "")) > 0 && refundDays ? Number(refundDays) : null,
+          min_booking_days: durationDays(minimumBookingDuration, minimumBookingCustomDays) ?? 45,
+          max_booking_days: durationDays(maximumBookingDuration, maximumBookingCustomDays),
+          area_overridden: areaOverridden,
           pincode: pincode || null,
           state: state || "Uttar Pradesh",
           access_instructions: accessInstructions || null,
@@ -420,10 +764,13 @@ export function OwnerHome() {
           created_at: new Date().toISOString(),
         };
         savePreviewListing(listing);
+        clearListingDraft();
         setDraftListingId(null);
+        track("listing_submit_success", { mode: "preview" });
         router.replace(`/owner/submitted/${encodeURIComponent(listingId)}`);
       } catch (error) {
         setSubmissionError(error instanceof Error ? error.message : "Could not open the listing preview.");
+        track("listing_submit_failed", { mode: "preview" });
       } finally {
         setIsSubmittingListing(false);
       }
@@ -469,11 +816,13 @@ export function OwnerHome() {
             loadingFeatures: selectedLoadingFeatures,
             amenities: selectedAmenities,
             priceModel,
-            rate,
-            securityAmount,
+            rate: rate.replace(/,/g, ""),
+            securityAmount: securityAmount.replace(/,/g, ""),
             refundDays,
             availabilityDays,
-            minimumBookingDuration,
+            minimumBookingDays: durationDays(minimumBookingDuration, minimumBookingCustomDays) ?? 45,
+            maximumBookingDays: durationDays(maximumBookingDuration, maximumBookingCustomDays),
+            areaOverridden,
             address,
             pincode,
             city: city || selectedLocation.city || "Kanpur",
@@ -526,70 +875,88 @@ export function OwnerHome() {
       if (!submitResponse.ok || !submitResult.listing?.id) {
         throw new Error(submitResult.error || "Could not submit this listing.");
       }
+      clearListingDraft();
       setDraftListingId(null);
+      track("listing_submit_success");
       router.replace(`/owner/submitted/${encodeURIComponent(submitResult.listing.id)}`);
     } catch (error) {
       setSubmissionError(error instanceof Error ? error.message : "Could not submit this listing.");
+      track("listing_submit_failed");
     } finally {
       setIsSubmittingListing(false);
     }
   };
 
-  const handleNext = () => {
-    if (currentStep === 1) {
-      if (!selectedSpaceType) {
-        setStepError("Select a space type to continue.");
-        return;
-      }
-      if (!selectedFloor) {
-        setFloorError("Select a floor level to continue.");
-        return;
-      }
+  const handleNext = async () => {
+    const step = currentStep;
+    const errors = validateCurrentStep();
+    if (Object.keys(errors).length) {
+      setStepErrors(errors);
       setStepError("");
-    }
-
-    if (currentStep === 2 && (!length.trim() || !breadth.trim())) {
-      setStepError("Enter length and breadth to continue.");
+      setErrorRevealTick((tick) => tick + 1);
+      track("listing_step_validation_failed", { step });
       return;
     }
-
-    if (currentStep === 5) {
-      if (mediaCount < LISTING_MIN_MEDIA || imageCount < LISTING_MIN_IMAGES) {
-        setStepError("Add at least 2 space photos to continue.");
-        return;
-      }
-      if (!documentFiles["Aadhaar Card"]) {
-        setStepError("Aadhaar card upload is required — the other documents are optional.");
-        return;
-      }
-      setStepError("");
-    }
-
-    if (currentStep >= totalSteps) {
-      setShowReview(true);
-      return;
-    }
-
+    setStepErrors({});
     setStepError("");
-    setCurrentStep((step) => Math.min(step + 1, totalSteps));
+
+    // Editing from Review: Save & Continue returns straight to Review (§11).
+    if (editingFromReview === step) {
+      if (!(await persistStep(step, true))) return;
+      setShowReview(true);
+      track("listing_step_saved", { step });
+      return;
+    }
+
+    if (step >= totalSteps) {
+      if (!(await persistStep(step, true))) return;
+      setShowReview(true);
+      track("listing_review_viewed");
+      return;
+    }
+
+    if (!(await persistStep(step + 1, false))) return;
+    setCurrentStep((current) => Math.min(current + 1, totalSteps));
+    track("listing_step_saved", { step });
   };
 
   const handleBack = () => {
+    // Best-effort save so backing out of the wizard never loses progress.
+    saveListingDraft(snapshotDraft(currentStep, showReview));
+
     if (showReview) {
       setShowReview(false);
       return;
     }
+
+    // Backing out of a review detour resumes normal step chaining.
+    if (editingFromReview === currentStep) setEditingFromReview(null);
 
     if (currentStep === 1) {
       router.push("/role-selection");
       return;
     }
 
+    setStepErrors({});
+    setStepError("");
     setCurrentStep((step) => Math.max(step - 1, 1));
   };
 
-  const handleReview = () => {
+  const handleReview = async () => {
+    const errors = validateStep6({ address, city, state });
+    if (Object.keys(errors).length) {
+      setStepErrors(errors);
+      setStepError("");
+      setErrorRevealTick((tick) => tick + 1);
+      track("listing_step_validation_failed", { step: 6 });
+      return;
+    }
+    setStepErrors({});
+    setStepError("");
+    if (!(await persistStep(6, true))) return;
     setShowReview(true);
+    track("listing_step_saved", { step: 6 });
+    track("listing_review_viewed");
   };
 
   const renderStep1 = () => (
@@ -610,7 +977,8 @@ export function OwnerHome() {
                 type="button"
                 className={`space-type-card ${isSelected ? "selected" : ""}`}
                 aria-pressed={isSelected}
-                onClick={() => setSelectedSpaceType(option.id)}
+                aria-invalid={Boolean(stepErrors.spaceType)}
+                onClick={() => selectSpaceType(option.id)}
               >
                 <span className="space-type-icon">
                   <SpaceTypeIcon type={option.icon} />
@@ -620,6 +988,7 @@ export function OwnerHome() {
             );
           })}
         </div>
+        {stepErrors.spaceType && <span className="owner-field-error" role="alert">{stepErrors.spaceType}</span>}
       </section>
 
       <div className="owner-form-row">
@@ -633,9 +1002,11 @@ export function OwnerHome() {
               value={selectedFloor}
               onChange={(event) => {
                 setSelectedFloor(event.target.value);
-                setFloorError("");
+                clearFieldError("floor");
               }}
               aria-label="Floor level"
+              aria-invalid={Boolean(stepErrors.floor)}
+              aria-describedby={stepErrors.floor ? "floor-error" : undefined}
               required
             >
               <option value="" disabled>Select floor</option>
@@ -645,7 +1016,7 @@ export function OwnerHome() {
               <path d="m6 9 6 6 6-6" />
             </svg>
           </div>
-          {floorError && <span className="owner-field-error" role="alert">{floorError}</span>}
+          {stepErrors.floor && <span id="floor-error" className="owner-field-error" role="alert">{stepErrors.floor}</span>}
         </label>
 
         <label className="owner-field owner-field-wide">
@@ -656,8 +1027,13 @@ export function OwnerHome() {
             <input
               type="text"
               value={spaceArea}
-              onChange={(event) => setSpaceArea(event.target.value)}
+              onChange={(event) => {
+                setSpaceArea(event.target.value);
+                clearFieldError("area");
+              }}
               aria-label="Space area"
+              aria-invalid={Boolean(stepErrors.area)}
+              aria-describedby={stepErrors.area ? "area-error" : undefined}
             />
             <div className="owner-area-unit-wrap">
               <select
@@ -683,12 +1059,18 @@ export function OwnerHome() {
         <div className="owner-textarea-wrap">
           <textarea
             value={description}
-            onChange={(event) => setDescription(event.target.value.slice(0, 300))}
+            onChange={(event) => {
+              setDescription(event.target.value.slice(0, 300));
+              clearFieldError("description");
+            }}
             placeholder="Write your space’s description"
             maxLength={300}
             aria-label="Space description"
+            aria-invalid={Boolean(stepErrors.description)}
+            aria-describedby={stepErrors.description ? "description-error" : undefined}
           />
           <div className="owner-char-counter">{descriptionLength}/300</div>
+          {stepErrors.description && <span id="description-error" className="owner-field-error" role="alert">{stepErrors.description}</span>}
         </div>
       </label>
 
@@ -702,19 +1084,24 @@ export function OwnerHome() {
                 key={option}
                 type="button"
                 className={`usage-chip ${isSelected ? "selected" : ""}`}
-                onClick={() => toggleUsage(option)}
+                onClick={() => {
+                  toggleUsage(option);
+                  clearFieldError("usage");
+                }}
                 aria-pressed={isSelected}
+                aria-invalid={Boolean(stepErrors.usage)}
               >
                 {option}
               </button>
             );
           })}
         </div>
+        {stepErrors.usage && <span className="owner-field-error" role="alert">{stepErrors.usage}</span>}
       </section>
 
-      {stepError && currentStep === 1 && <p className="owner-field-error owner-step-error" role="alert">{stepError}</p>}
-      <button type="button" className="owner-cta" onClick={handleNext}>
-        Save &amp; Continue
+      {stepBanner && currentStep === 1 && <p className="owner-field-error owner-step-error" role="alert">{stepBanner}</p>}
+      <button type="button" className="owner-cta" onClick={handleNext} disabled={isSavingStep}>
+        {isSavingStep ? "Saving…" : "Save & Continue"}
       </button>
     </>
   );
@@ -729,19 +1116,52 @@ export function OwnerHome() {
         <div className="owner-dimension-field">
           <label className="owner-dimension-label">Length*</label>
           <div className="owner-input-box">
-            <input type="text" value={length} onChange={(event) => setLength(event.target.value)} placeholder="Enter" />
+            <input
+              type="text"
+              inputMode="decimal"
+              value={length}
+              onChange={(event) => {
+                setLength(event.target.value);
+                clearFieldError("dimensions");
+              }}
+              placeholder="Enter"
+              aria-label="Length"
+              aria-invalid={Boolean(stepErrors.dimensions)}
+            />
           </div>
         </div>
         <div className="owner-dimension-field">
           <label className="owner-dimension-label">Breadth*</label>
           <div className="owner-input-box">
-            <input type="text" value={breadth} onChange={(event) => setBreadth(event.target.value)} placeholder="Enter" />
+            <input
+              type="text"
+              inputMode="decimal"
+              value={breadth}
+              onChange={(event) => {
+                setBreadth(event.target.value);
+                clearFieldError("dimensions");
+              }}
+              placeholder="Enter"
+              aria-label="Breadth"
+              aria-invalid={Boolean(stepErrors.dimensions)}
+            />
           </div>
         </div>
         <div className="owner-dimension-field">
           <label className="owner-dimension-label">Height*</label>
           <div className="owner-input-box">
-            <input type="text" value={height} onChange={(event) => setHeight(event.target.value)} placeholder="Enter" />
+            <input
+              type="text"
+              inputMode="decimal"
+              value={height}
+              onChange={(event) => {
+                setHeight(event.target.value);
+                clearFieldError("height");
+              }}
+              placeholder="Enter"
+              aria-label="Height"
+              aria-invalid={Boolean(stepErrors.height)}
+            />
           </div>
         </div>
         <div className="owner-dimension-field owner-dimension-field-unit">
@@ -761,36 +1181,71 @@ export function OwnerHome() {
           </div>
         </div>
       </div>
+      {stepErrors.dimensions && <span className="owner-field-error" role="alert">{stepErrors.dimensions}</span>}
 
       <div className="owner-total-area-card">
-        <div className="owner-total-area-main">Total Area : {areaValue}</div>
-        <div className="owner-total-area-sub">Auto-Calculated Tap to Override*</div>
+        {areaOverrideActive ? (
+          <div className="owner-total-area-override">
+            <input
+              type="text"
+              inputMode="decimal"
+              className="owner-total-area-input"
+              value={spaceArea}
+              onChange={(event) => {
+                setSpaceArea(event.target.value);
+                setAreaOverridden(true);
+                clearFieldError("area");
+              }}
+              onBlur={() => setAreaOverrideActive(false)}
+              autoFocus
+              aria-label={`Total area override in ${spaceAreaUnit}`}
+              placeholder="Enter total area"
+            />
+            <button type="button" className="owner-total-area-done" onClick={() => setAreaOverrideActive(false)}>
+              Done
+            </button>
+          </div>
+        ) : (
+          <button
+            type="button"
+            className="owner-total-area-main owner-total-area-tap"
+            onClick={() => setAreaOverrideActive(true)}
+            aria-label={areaOverridden ? "Total area manually set, tap to edit" : "Total area auto-calculated, tap to override"}
+          >
+            Total Area : {areaOverridden ? `${spaceArea || "—"} ${spaceAreaUnit}` : areaValue}
+          </button>
+        )}
+        <div className="owner-total-area-sub">
+          {areaOverridden ? "Manually set · Tap to edit*" : "Auto-Calculated Tap to Override*"}
+        </div>
       </div>
 
-      <div className="owner-temperature-row">
-        <div className="owner-temperature-field">
-          <label className="owner-dimension-label">Temperature*</label>
-          <div className="owner-input-box owner-input-box--wide">
-            <input type="text" value={temperature} onChange={(event) => setTemperature(event.target.value)} placeholder="Enter" />
+      {showTemperatureFields && (
+        <div className="owner-temperature-row">
+          <div className="owner-temperature-field">
+            <label className="owner-dimension-label">Temperature*</label>
+            <div className="owner-input-box owner-input-box--wide">
+              <input type="text" value={temperature} onChange={(event) => setTemperature(event.target.value)} placeholder="Enter" aria-label="Temperature" />
+            </div>
+          </div>
+          <div className="owner-dimension-field owner-dimension-field-unit owner-temp-select">
+            <label className="owner-dimension-label">Unit</label>
+            <div className="owner-input-box owner-input-box--unit">
+              <select
+                className="owner-unit-select"
+                value={temperatureUnit}
+                onChange={(event) => changeTemperatureUnit(event.target.value as TemperatureUnit)}
+                aria-label="Temperature unit"
+              >
+                {TEMPERATURE_UNITS.map((unit) => <option key={unit} value={unit}>{unit}</option>)}
+              </select>
+              <svg viewBox="0 0 24 24" fill="none" stroke={accentPurple} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                <path d="m6 9 6 6 6-6" />
+              </svg>
+            </div>
           </div>
         </div>
-        <div className="owner-dimension-field owner-dimension-field-unit owner-temp-select">
-          <label className="owner-dimension-label">Unit</label>
-          <div className="owner-input-box owner-input-box--unit">
-            <select
-              className="owner-unit-select"
-              value={temperatureUnit}
-              onChange={(event) => changeTemperatureUnit(event.target.value as TemperatureUnit)}
-              aria-label="Temperature unit"
-            >
-              {TEMPERATURE_UNITS.map((unit) => <option key={unit} value={unit}>{unit}</option>)}
-            </select>
-            <svg viewBox="0 0 24 24" fill="none" stroke={accentPurple} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-              <path d="m6 9 6 6 6-6" />
-            </svg>
-          </div>
-        </div>
-      </div>
+      )}
 
       <div className="owner-access-loading">Accessing &amp; Loading features</div>
 
@@ -813,9 +1268,9 @@ export function OwnerHome() {
         })}
       </div>
 
-      {stepError && currentStep === 2 && <p className="owner-field-error owner-step-error" role="alert">{stepError}</p>}
-      <button type="button" className="owner-cta owner-cta--step-2" onClick={handleNext}>
-        Save &amp; Continue
+      {stepBanner && currentStep === 2 && <p className="owner-field-error owner-step-error" role="alert">{stepBanner}</p>}
+      <button type="button" className="owner-cta owner-cta--step-2" onClick={handleNext} disabled={isSavingStep}>
+        {isSavingStep ? "Saving…" : "Save & Continue"}
       </button>
     </>
   );
@@ -902,8 +1357,8 @@ export function OwnerHome() {
           </span>
         </div>
 
-        <button type="button" className="owner-cta owner-cta--step-3" onClick={handleNext}>
-          Save &amp; Continue
+        <button type="button" className="owner-cta owner-cta--step-3" onClick={handleNext} disabled={isSavingStep}>
+          {isSavingStep ? "Saving…" : "Save & Continue"}
         </button>
       </>
     );
@@ -911,19 +1366,10 @@ export function OwnerHome() {
 
   const renderStep4 = () => (
     <PricingAvailabilityStep
-      priceModel={priceModel}
-      rate={rate}
-      securityAmount={securityAmount}
-      refundDays={refundDays}
-      availabilityDays={availabilityDays}
-      minimumBookingDuration={minimumBookingDuration}
-      onPriceModelChange={setPriceModel}
-      onRateChange={setRate}
-      onSecurityAmountChange={setSecurityAmount}
-      onRefundDaysChange={setRefundDays}
-      onAvailabilityDayToggle={toggleAvailabilityDay}
-      onMinimumBookingDurationChange={setMinimumBookingDuration}
+      values={step4Values}
+      onChange={setStep4Values}
       onContinue={handleNext}
+      saving={isSavingStep}
     />
   );
 
@@ -966,6 +1412,7 @@ export function OwnerHome() {
                         <img src={selectedPhoto.previewUrl} alt={`${photo} preview`} className="owner-upload-preview" />
                       )}
                       <span className="owner-upload-file-name">{selectedPhoto.name}</span>
+                      {selectedPhoto.isCompressing && <span className="owner-upload-processing">Processing…</span>}
                     </>
                   ) : (
                     <>
@@ -976,6 +1423,16 @@ export function OwnerHome() {
                     </>
                   )}
                 </button>
+                {selectedPhoto && (
+                  <button
+                    type="button"
+                    className="owner-upload-remove"
+                    aria-label={`Remove ${photo}`}
+                    onClick={() => removePhoto(photo)}
+                  >
+                    ×
+                  </button>
+                )}
               </div>
             );
           })}
@@ -1003,15 +1460,25 @@ export function OwnerHome() {
                     {selectedDocument ? selectedDocument.name : documentName === "Aadhaar Card" ? "Required" : "Optional"}
                   </span>
                 </button>
+                {selectedDocument && (
+                  <button
+                    type="button"
+                    className="owner-upload-remove"
+                    aria-label={`Remove ${documentName}`}
+                    onClick={() => removeDocument(documentName)}
+                  >
+                    ×
+                  </button>
+                )}
               </div>
             );
           })}
         </div>
       </section>
 
-      {stepError && currentStep === 5 && <p className="owner-field-error owner-step-error" role="alert">{stepError}</p>}
-      <PrimaryButton type="button" className="owner-cta owner-cta--step-5" onClick={handleNext}>
-        Save &amp; Continue
+      {stepBanner && currentStep === 5 && <p className="owner-field-error owner-step-error" role="alert">{stepBanner}</p>}
+      <PrimaryButton type="button" className="owner-cta owner-cta--step-5" onClick={handleNext} disabled={isSavingStep}>
+        {isSavingStep ? "Saving…" : "Save & Continue"}
       </PrimaryButton>
     </>
   );
@@ -1032,6 +1499,9 @@ export function OwnerHome() {
             onMapReady={(map) => {
               mapApiRef.current = map;
               map.invalidateSize();
+            }}
+            onMarkerDragEnd={(latitude, longitude) => {
+              setSelectedLocation((current) => ({ ...current, latitude, longitude }));
             }}
           />
           <div className="owner-map-zoom-controls" aria-label="Map controls">
@@ -1059,9 +1529,15 @@ export function OwnerHome() {
           type="text"
           className="owner-address-input"
           value={address}
-          onChange={(event) => setAddress(event.target.value)}
+          onChange={(event) => {
+            setAddress(event.target.value);
+            clearFieldError("address");
+          }}
           placeholder="JS Cold Storage, 16/80 1, Civil Lines, Kanpur-208001..."
+          aria-invalid={Boolean(stepErrors.address)}
+          aria-describedby={stepErrors.address ? "address-error" : undefined}
         />
+        {stepErrors.address && <span id="address-error" className="owner-field-error" role="alert">{stepErrors.address}</span>}
       </label>
 
       <div className="owner-location-row">
@@ -1071,13 +1547,34 @@ export function OwnerHome() {
         </label>
         <label className="owner-form-field">
           <span className="field-label">City*</span>
-          <input type="text" className="owner-mini-input" value={city} onChange={(event) => setCity(event.target.value)} placeholder="Enter" />
+          <input
+            type="text"
+            className="owner-mini-input"
+            value={city}
+            onChange={(event) => {
+              setCity(event.target.value);
+              clearFieldError("cityState");
+            }}
+            placeholder="Enter"
+            aria-invalid={Boolean(stepErrors.cityState)}
+          />
         </label>
         <label className="owner-form-field">
           <span className="field-label">State*</span>
-          <input type="text" className="owner-mini-input" value={state} onChange={(event) => setState(event.target.value)} placeholder="Enter" />
+          <input
+            type="text"
+            className="owner-mini-input"
+            value={state}
+            onChange={(event) => {
+              setState(event.target.value);
+              clearFieldError("cityState");
+            }}
+            placeholder="Enter"
+            aria-invalid={Boolean(stepErrors.cityState)}
+          />
         </label>
       </div>
+      {stepErrors.cityState && <span className="owner-field-error" role="alert">{stepErrors.cityState}</span>}
 
       <label className="owner-form-field owner-form-field--block">
         <span className="field-label">Access Instructions for Renters</span>
@@ -1092,8 +1589,9 @@ export function OwnerHome() {
         </div>
       </label>
 
-      <PrimaryButton type="button" className="owner-cta owner-cta--step-6" onClick={handleReview}>
-        Review Listing
+      {stepBanner && currentStep === 6 && !showReview && <p className="owner-field-error owner-step-error" role="alert">{stepBanner}</p>}
+      <PrimaryButton type="button" className="owner-cta owner-cta--step-6" onClick={handleReview} disabled={isSavingStep}>
+        {isSavingStep ? "Saving…" : "Review Listing"}
       </PrimaryButton>
     </>
   );
@@ -1119,45 +1617,39 @@ export function OwnerHome() {
 
       <article className="owner-preview-card">
         <div className="owner-preview-image-wrap">
-          <div className="owner-preview-image" aria-label="Property image" />
+          {previewPhoto ? (
+            previewPhoto.isVideo ? (
+              <video src={previewPhoto.previewUrl} className="owner-preview-image" muted playsInline aria-label="Property image" />
+            ) : (
+              <img src={previewPhoto.previewUrl} alt="Property preview" className="owner-preview-image" />
+            )
+          ) : (
+            <div className="owner-preview-image" aria-label="Property image" />
+          )}
           <div className="owner-preview-badges">
             <span className="owner-preview-badge owner-preview-badge--instant">
               <span className="owner-preview-badge-icon">⚡</span>
               <span>Instant</span>
             </span>
-            <span className="owner-preview-badge owner-preview-badge--verified">
-              <span className="owner-preview-badge-dot" />
-              <span>Verified</span>
-            </span>
-            <span className="owner-preview-badge owner-preview-badge--rating">
-              <Star size={12} fill="currentColor" strokeWidth={1.8} />
-              <span>4.8/5</span>
-            </span>
           </div>
         </div>
 
         <div className="owner-preview-content">
-          <h2>Somdutt Cold Storage, Civil Lines Kanpur</h2>
-          <p>Best for stuffing the low-temp sustained goods</p>
+          <h2>{previewTitle}</h2>
+          <p>{description.trim() || "No description yet."}</p>
 
           <div className="owner-preview-tags">
-            {[
-              "KeyCard",
-              "CCTV",
-              "Loading",
-              "30HP Power",
-              "WiFi",
-            ].map((tag) => (
+            {previewTags.map((tag) => (
               <span key={tag} className="owner-preview-tag">{tag}</span>
             ))}
           </div>
 
           <div className="owner-preview-price-row">
             <div className="owner-preview-price-wrap">
-              <span className="owner-preview-price">₹1,200</span>
-              <span className="owner-preview-price-unit">/Day</span>
+              <span className="owner-preview-price">₹{formatINR(Number(rate.replace(/,/g, "")) || 0)}</span>
+              <span className="owner-preview-price-unit">/{priceModel === "Per Month" ? "Month" : "Week"}</span>
             </div>
-            <button type="button" className="owner-preview-book-button">Book</button>
+            <button type="button" className="owner-preview-book-button" aria-hidden="true" tabIndex={-1}>Book</button>
           </div>
         </div>
       </article>
@@ -1166,19 +1658,19 @@ export function OwnerHome() {
         <h3>Listing Checklist</h3>
         <div className="owner-checklist-grid">
           <ul className="owner-checklist-col">
-            <li><span className="owner-checklist-icon"><Check size={12} strokeWidth={3} /></span><span>Property Details</span></li>
-            <li><span className="owner-checklist-icon"><Check size={12} strokeWidth={3} /></span><span>Amenities &amp; Features</span></li>
-            <li><span className="owner-checklist-icon"><Check size={12} strokeWidth={3} /></span><span>Photos &amp; KYC Upload</span></li>
+            <li><button type="button" onClick={() => editSection(1)} aria-label="Edit Property Details"><span className="owner-checklist-icon"><Check size={12} strokeWidth={3} /></span><span className="owner-checklist-copy">Property Details</span></button></li>
+            <li><button type="button" onClick={() => editSection(3)} aria-label="Edit Amenities and Features"><span className="owner-checklist-icon"><Check size={12} strokeWidth={3} /></span><span className="owner-checklist-copy">Amenities &amp; Features</span></button></li>
+            <li><button type="button" onClick={() => editSection(5)} aria-label="Edit Photos and KYC Upload"><span className="owner-checklist-icon"><Check size={12} strokeWidth={3} /></span><span className="owner-checklist-copy">Photos &amp; KYC Upload</span></button></li>
           </ul>
           <ul className="owner-checklist-col">
-            <li><span className="owner-checklist-icon"><Check size={12} strokeWidth={3} /></span><span>Property Dimensions</span></li>
-            <li><span className="owner-checklist-icon"><Check size={12} strokeWidth={3} /></span><span>Pricing Details</span></li>
-            <li><span className="owner-checklist-icon"><Check size={12} strokeWidth={3} /></span><span>Location &amp; Access Details</span></li>
+            <li><button type="button" onClick={() => editSection(2)} aria-label="Edit Property Dimensions"><span className="owner-checklist-icon"><Check size={12} strokeWidth={3} /></span><span className="owner-checklist-copy">Property Dimensions</span></button></li>
+            <li><button type="button" onClick={() => editSection(4)} aria-label="Edit Pricing Details"><span className="owner-checklist-icon"><Check size={12} strokeWidth={3} /></span><span className="owner-checklist-copy">Pricing Details</span></button></li>
+            <li><button type="button" onClick={() => editSection(6)} aria-label="Edit Location and Access Details"><span className="owner-checklist-icon"><Check size={12} strokeWidth={3} /></span><span className="owner-checklist-copy">Location &amp; Access Details</span></button></li>
           </ul>
         </div>
       </section>
 
-      <button type="button" className="owner-edit-bar" aria-label="Edit section">
+      <button type="button" className="owner-edit-bar" aria-label="Edit any section" onClick={() => editSection(1)}>
         <span className="owner-edit-bar-copy">Edit any section before submitting</span>
         <span className="owner-edit-bar-action"><Pencil size={15} /> Edit</span>
       </button>
@@ -1201,7 +1693,15 @@ export function OwnerHome() {
   };
 
   return (
-    <main className="owner-page">
+    <main
+      className="owner-page"
+      onClickCapture={() => {
+        hasInteractedRef.current = true;
+      }}
+      onChangeCapture={() => {
+        hasInteractedRef.current = true;
+      }}
+    >
       <div className="owner-shell">
         <header className="owner-status-bar" aria-label="Status bar">
           <span className="owner-status-time">9:30</span>
@@ -1241,6 +1741,8 @@ export function OwnerHome() {
               <span className="owner-progress-track" />
               <span className="owner-progress-fill" style={{ width: progressWidth }} />
             </div>
+
+            {draftNotice && <p className="owner-draft-notice" role="status">{draftNotice}</p>}
           </>
         )}
 

@@ -10,18 +10,25 @@ type LocationMapProps = {
   center: [number, number];
   selectedLocation: LocationSearchResult;
   onMapReady?: (map: L.Map) => void;
+  /** Fired when the owner drags the pin to a new entrance position. */
+  onMarkerDragEnd?: (latitude: number, longitude: number) => void;
 };
 
-export default function LocationMap({ center, selectedLocation, onMapReady }: LocationMapProps) {
+export default function LocationMap({ center, selectedLocation, onMapReady, onMarkerDragEnd }: LocationMapProps) {
   const containerRef = useRef<HTMLDivElement | null>(null);
   const mapRef = useRef<L.Map | null>(null);
   const markerRef = useRef<L.Marker | null>(null);
   const initialCenterRef = useRef(center);
   const onMapReadyRef = useRef(onMapReady);
+  const onMarkerDragEndRef = useRef(onMarkerDragEnd);
 
   useEffect(() => {
     onMapReadyRef.current = onMapReady;
   }, [onMapReady]);
+
+  useEffect(() => {
+    onMarkerDragEndRef.current = onMarkerDragEnd;
+  }, [onMarkerDragEnd]);
 
   useEffect(() => {
     if (!containerRef.current || mapRef.current) return;
@@ -77,7 +84,12 @@ export default function LocationMap({ center, selectedLocation, onMapReady }: Lo
         iconAnchor: [9, 9],
       });
 
-      markerRef.current = L.marker(target, { icon }).addTo(mapRef.current);
+      const marker = L.marker(target, { icon, draggable: true }).addTo(mapRef.current);
+      marker.on("dragend", () => {
+        const position = marker.getLatLng();
+        onMarkerDragEndRef.current?.(position.lat, position.lng);
+      });
+      markerRef.current = marker;
       return;
     }
 

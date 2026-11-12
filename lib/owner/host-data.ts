@@ -30,8 +30,10 @@ export type HostListing = {
   price_amount: number;
   price_model: string;
   security_amount: number;
-  refund_within_days: number;
+  refund_within_days: number | null;
   min_booking_days: number;
+  max_booking_days?: number | null;
+  area_overridden?: boolean;
   pincode: string | null;
   state: string;
   access_instructions: string | null;

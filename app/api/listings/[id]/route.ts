@@ -5,6 +5,21 @@ import { createClient } from "@/lib/supabase/server";
 
 const PUBLIC_COLUMNS = "id, title, description, property_type, area_value, area_unit, price_amount, price_model, min_booking_days, city, state, pincode, amenities, latitude, longitude, listing_photos(*)";
 
+// See app/api/listings/route.ts — retries without the columns introduced by
+// the pricing-availability migration when that migration is not yet applied.
+const isNewPricingColumnError = (error: { code?: string; message?: string; details?: string | null; hint?: string | null } | null) =>
+  error?.code === "42703" &&
+  [error.message, error.details, error.hint].some(
+    (value) => value?.includes("max_booking_days") || value?.includes("area_overridden"),
+  );
+
+const withoutNewPricingColumns = (data: Record<string, unknown>): Record<string, unknown> => {
+  const rest = { ...data };
+  delete rest.max_booking_days;
+  delete rest.area_overridden;
+  return rest;
+};
+
 export async function GET(_request: Request, context: { params: Promise<{ id: string }> }) {
   try {
     const { id } = await context.params;
@@ -44,14 +59,20 @@ export async function PATCH(request: Request, context: { params: Promise<{ id: s
     const parsed = parseListingDraft(body);
     if ("error" in parsed) return NextResponse.json({ error: parsed.error }, { status: 400 });
 
-    const { data, error } = await supabase
-      .from("listings")
-      .update({ ...parsed.data, updated_at: new Date().toISOString() })
-      .eq("id", id)
-      .eq("owner_id", user.id)
-      .in("status", ["draft", "pending_review", "rejected"])
-      .select("id, status")
-      .maybeSingle();
+    const updateRow = (row: Record<string, unknown>) =>
+      supabase
+        .from("listings")
+        .update({ ...row, updated_at: new Date().toISOString() })
+        .eq("id", id)
+        .eq("owner_id", user.id)
+        .in("status", ["draft", "pending_review", "rejected"])
+        .select("id, status")
+        .maybeSingle();
+
+    let { data, error } = await updateRow(parsed.data);
+    if (error && isNewPricingColumnError(error)) {
+      ({ data, error } = await updateRow(withoutNewPricingColumns(parsed.data)));
+    }
     if (error) return NextResponse.json({ error: error.message }, { status: 400 });
     if (!data) return NextResponse.json({ error: "Editable listing not found." }, { status: 404 });
     return NextResponse.json({ listing: data });

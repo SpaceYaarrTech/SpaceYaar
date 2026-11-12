@@ -7344,3 +7344,191 @@ a { color: inherit; text-decoration: none; }
   object-fit: cover;
   background: #000;
 }
+
+/* ===== Listing wizard update (handoff §5–§13, §18, §20) ===== */
+
+/* 44px minimum touch targets on Step 4 choice controls. */
+.pricing-pill,
+.availability-day,
+.booking-option {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 44px;
+  cursor: pointer;
+}
+
+.pricing-pill:focus-visible,
+.availability-day:focus-visible,
+.booking-option:focus-visible,
+.usage-chip:focus-visible,
+.space-type-card:focus-visible,
+.amenity-chip:focus-visible,
+.feature-chip:focus-visible,
+.owner-checklist-col button:focus-visible,
+.owner-upload-remove:focus-visible,
+.owner-total-area-tap:focus-visible {
+  outline: 2px solid #ff1b12;
+  outline-offset: 2px;
+}
+
+/* Inline per-field error messages (Step 4 spec §13). */
+.pricing-section .owner-field-error,
+.pricing-form-block .owner-field-error,
+.pricing-form-grid .owner-field-error {
+  display: block;
+  font-size: 13px;
+}
+
+.owner-field-error {
+  display: block;
+  margin-top: 6px;
+  color: #d12a2a;
+  font-size: 13px;
+  line-height: 1.4;
+}
+
+/* Invalid controls get a red border; wrapped inputs inherit it. */
+.owner-page [aria-invalid="true"] {
+  border-color: #d12a2a;
+}
+
+.pricing-input-wrap:has([aria-invalid="true"]),
+.owner-input-box:has([aria-invalid="true"]),
+.field-input:has([aria-invalid="true"]),
+.owner-textarea-wrap:has([aria-invalid="true"]) {
+  border-color: #d12a2a;
+}
+
+/* Disabled / saving CTA state (handoff §18). */
+.owner-cta:disabled,
+.owner-cta[aria-disabled="true"] {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+
+.owner-cta {
+  cursor: pointer;
+  transition: opacity 0.15s ease;
+}
+
+/* Step 2 manual total-area override. */
+.owner-total-area-tap {
+  appearance: none;
+  width: 100%;
+  padding: 0;
+  border: none;
+  background: none;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.owner-total-area-override {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+}
+
+.owner-total-area-input {
+  flex: 1;
+  min-height: 44px;
+  padding: 8px 12px;
+  border: 1.5px solid #d9d9d9;
+  border-radius: 12px;
+  background: #fff;
+  font-size: 15px;
+}
+
+.owner-total-area-done {
+  min-height: 44px;
+  padding: 8px 16px;
+  border: none;
+  border-radius: 12px;
+  background: #ff1b12;
+  color: #fff;
+  font-size: 14px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+/* Step 5 remove/replace affordances. */
+.owner-upload-card-wrap,
+.owner-doc-row-wrap {
+  position: relative;
+}
+
+.owner-upload-remove {
+  position: absolute;
+  top: 6px;
+  right: 6px;
+  z-index: 2;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 26px;
+  height: 26px;
+  padding: 0;
+  border: none;
+  border-radius: 999px;
+  background: rgba(0, 0, 0, 0.65);
+  color: #fff;
+  font-size: 16px;
+  line-height: 1;
+  cursor: pointer;
+}
+
+.owner-upload-processing {
+  position: absolute;
+  bottom: 8px;
+  left: 8px;
+  padding: 3px 8px;
+  border-radius: 999px;
+  background: rgba(37, 37, 37, 0.8);
+  color: #fff;
+  font-size: 11px;
+  font-weight: 600;
+}
+
+/* Draft restore notice. */
+.owner-draft-notice {
+  margin: 8px 24px 0;
+  padding: 8px 12px;
+  border-radius: 10px;
+  background: #eef4ff;
+  color: #2b4a8b;
+  font-size: 12px;
+  text-align: center;
+}
+
+/* Review preview renders the real photo when one is staged. */
+.owner-preview-image {
+  position: relative;
+  display: block;
+  width: 100%;
+  object-fit: cover;
+}
+
+.owner-preview-image-wrap video.owner-preview-image {
+  background: #000;
+}
+
+/* Checklist entries navigate back to their step (handoff §11). */
+.owner-checklist-col li button {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  width: 100%;
+  padding: 0;
+  border: none;
+  background: none;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.owner-checklist-col li button:hover .owner-checklist-copy {
+  text-decoration: underline;
+}

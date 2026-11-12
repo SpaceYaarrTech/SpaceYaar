@@ -1,8 +1,15 @@
+import { MAX_REFUND_DAYS, PLATFORM_MIN_BOOKING_DAYS } from "@/lib/listing/config";
+
 const PRICE_MODELS = ["Per Day", "Per Week", "Per Month", "Customize"] as const;
 const AVAILABILITY_DAYS = ["Mon", "Tues", "Wed", "Thu", "Fri", "Sat", "Sun"] as const;
 const DIMENSION_UNITS = ["Ft", "Gaj", "Cm", "Inch", "Meter"] as const;
 const TEMPERATURE_UNITS = ["Celsius", "Fahrenheit"] as const;
+// Legacy label durations still accepted so older edit flows keep working.
+// The wizard now sends `minimumBookingDays` as a normalized number instead.
 const MINIMUM_DURATIONS: Record<string, number> = { "1 Day": 1, "3 Days": 3, "1 Week": 7 };
+// Values older listings were created with; grandfathered in below the
+// platform minimum so editing them never corrupts or rejects their data.
+const LEGACY_MIN_BOOKING_DAYS = [1, 3, 7];
 
 const readString = (value: unknown, maxLength: number) =>
   typeof value === "string" ? value.trim().slice(0, maxLength) : "";
@@ -39,7 +46,9 @@ export function parseListingDraft(value: unknown) {
   const priceAmount = readNumber(input.rate);
   const securityAmount = readNumber(input.securityAmount) ?? 0;
   const refundWithinDays = readNumber(input.refundDays);
-  const minimumBookingDays = MINIMUM_DURATIONS[readString(input.minimumBookingDuration, 20)];
+  const minimumBookingDays =
+    readNumber(input.minimumBookingDays) ?? MINIMUM_DURATIONS[readString(input.minimumBookingDuration, 20)] ?? null;
+  const maximumBookingDays = readNumber(input.maximumBookingDays);
   const availabilityDays = readStringArray(input.availabilityDays, 7, 8);
   const latitude = readNumber(input.latitude);
   const longitude = readNumber(input.longitude);
@@ -50,11 +59,25 @@ export function parseListingDraft(value: unknown) {
   if (!PRICE_MODELS.includes(priceModel as (typeof PRICE_MODELS)[number]) || priceAmount === null || priceAmount <= 0) {
     return { error: "Choose a price model and enter a valid rate." } as const;
   }
-  if (securityAmount < 0 || refundWithinDays === null || refundWithinDays < 1) {
+  // A ₹0 deposit needs no refund timeline (stored as null); a taken deposit
+  // requires one within the configured maximum (handoff §8.3/§8.4).
+  if (securityAmount < 0 || (securityAmount > 0 && (refundWithinDays === null || refundWithinDays < 1 || refundWithinDays > MAX_REFUND_DAYS))) {
     return { error: "Enter valid security and refund details." } as const;
   }
-  if (!minimumBookingDays || !availabilityDays.length) {
+  if (minimumBookingDays === null || minimumBookingDays < 1 || !availabilityDays.length) {
     return { error: "Choose availability days and a minimum booking duration." } as const;
+  }
+  if (
+    minimumBookingDays < PLATFORM_MIN_BOOKING_DAYS &&
+    !LEGACY_MIN_BOOKING_DAYS.includes(minimumBookingDays)
+  ) {
+    return { error: `Minimum booking duration must be at least ${PLATFORM_MIN_BOOKING_DAYS} days.` } as const;
+  }
+  if (maximumBookingDays !== null && maximumBookingDays < 1) {
+    return { error: "Enter a valid maximum booking duration." } as const;
+  }
+  if (maximumBookingDays !== null && maximumBookingDays < minimumBookingDays) {
+    return { error: "Maximum duration must be greater than or equal to minimum duration." } as const;
   }
   if (availabilityDays.some((day) => !AVAILABILITY_DAYS.includes(day as (typeof AVAILABILITY_DAYS)[number]))) {
     return { error: "Choose valid availability weekdays." } as const;
@@ -96,9 +119,11 @@ export function parseListingDraft(value: unknown) {
       price_amount: priceAmount,
       currency: "INR",
       security_amount: securityAmount,
-      refund_within_days: Math.floor(refundWithinDays),
+      refund_within_days: refundWithinDays === null ? null : Math.floor(refundWithinDays),
       availability_days: availabilityDays,
-      min_booking_days: minimumBookingDays,
+      min_booking_days: Math.floor(minimumBookingDays),
+      max_booking_days: maximumBookingDays === null ? null : Math.floor(maximumBookingDays),
+      area_overridden: input.areaOverridden === true,
       address,
       pincode: readString(input.pincode, 12) || null,
       city,
