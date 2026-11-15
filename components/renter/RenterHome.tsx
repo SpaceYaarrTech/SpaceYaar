@@ -17,6 +17,12 @@ import { RenterBottomNavigation } from "@/components/renter/RenterBottomNavigati
 import { isGuestLoginRequired } from "@/lib/auth/guest-session";
 import { getSelectedRole, setSelectedRole } from "@/lib/roles/role-storage";
 import { useRenterProfile } from "@/lib/renter/profile-data";
+import {
+  detectCurrentLocation,
+  locationLabelOf,
+  persistLocation,
+  readStoredLocation,
+} from "@/lib/maps/current-location";
 import { createClient } from "@/lib/supabase/client";
 import type { UserRole } from "@/types/roles";
 
@@ -239,23 +245,43 @@ export function RenterHome({ onRoleChange }: RenterHomeProps = {}) {
   const greetingName = profile?.display_name?.trim() || loginName.trim();
   const greetingFirstName = greetingName ? greetingName.split(/\s+/)[0] : "";
 
-  // Location line mirrors what the owner confirmed on /location; the demo
-  // default stays until a selection exists (or a legacy writer left only
-  // coordinates, in which case there is nothing to show but the default).
-  const [locationLabel, setLocationLabel] = useState("Industrial estate Dada nagar, Kanpur");
+  // Location line shows the user's actual place: their saved choice, or the
+  // first geolocation fix. Never a hardcoded city — "Set your location"
+  // invites the tap that opens /location.
+  const [locationLabel, setLocationLabel] = useState("Set your location");
+  // Raw API listings kept so a late location fix can re-bake distances.
+  const publicListingsRef = useRef<PublicListing[]>([]);
 
   useEffect(() => {
-    try {
-      const stored = window.sessionStorage.getItem("spaceyaar-selected-location");
-      if (!stored) return;
-      const parsed = JSON.parse(stored) as { area?: unknown; city?: unknown };
-      const area = typeof parsed.area === "string" ? parsed.area.trim() : "";
-      const city = typeof parsed.city === "string" ? parsed.city.trim() : "";
-      const label = [area, city].filter(Boolean).join(", ");
+    let stale = false;
+
+    const stored = readStoredLocation();
+    if (stored) {
+      const label = locationLabelOf(stored);
       if (label) setLocationLabel(label);
-    } catch {
-      // Unreadable payload — keep the default line.
+      return; // already known — don't re-prompt on every home load
     }
+
+    // Nothing saved yet: ask for the device location so the line is never a
+    // guess. Denied/failed keeps the neutral prompt.
+    void detectCurrentLocation().then((outcome) => {
+      if (stale || outcome.status !== "located") return;
+      const label = locationLabelOf(outcome.location);
+      if (!label) return;
+      persistLocation(outcome.location, "renter");
+      setLocationLabel(label);
+      // Distance sort bakes its origin in when listings load — refresh any
+      // that were fetched before the fix arrived.
+      const raw = publicListingsRef.current;
+      if (raw.length) {
+        const origin: [number, number] = [outcome.location.latitude, outcome.location.longitude];
+        setListings(raw.map((listing) => mapPublicListing(listing, origin)));
+      }
+    });
+
+    return () => {
+      stale = true;
+    };
   }, []);
 
   useEffect(() => {
@@ -297,6 +323,7 @@ export function RenterHome({ onRoleChange }: RenterHomeProps = {}) {
         }
 
         if (isCurrent) {
+          publicListingsRef.current = result.listings ?? [];
           setListings((result.listings ?? []).map((listing) => mapPublicListing(listing, origin)));
           setIsDemoListings(false);
         }

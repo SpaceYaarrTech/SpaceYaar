@@ -1,11 +1,16 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import dynamic from "next/dynamic";
 import { useRouter } from "next/navigation";
 import { Check, Mic, Minus, Plus, Search } from "lucide-react";
 import { getSelectedRole } from "@/lib/roles/role-storage";
 import { searchLocation, type LocationSearchResult } from "@/lib/maps/geocoding";
+import {
+  detectCurrentLocation,
+  locationLabelOf,
+  readStoredLocation,
+} from "@/lib/maps/current-location";
 import { MAP_CONFIG } from "@/lib/maps/map-config";
 
 const LocationMap = dynamic(() => import("@/components/location/LocationMap"), { ssr: false });
@@ -38,15 +43,28 @@ const defaultLocation: LocationSearchResult = {
 export function LocationScreen() {
   const router = useRouter();
   const mapApiRef = useRef<L.Map | null>(null);
-  const [searchQuery, setSearchQuery] = useState("Kanpur");
+  // Starts empty — the screen never assumes a city. A saved choice paints in
+  // instantly on mount; otherwise (and always, as a refinement) the browser
+  // is asked for the device location.
+  const [searchQuery, setSearchQuery] = useState("");
   const [selectedLocation, setSelectedLocation] = useState<LocationSearchResult>(defaultLocation);
-  const [selectedAreas, setSelectedAreas] = useState<string[]>(["Panki", "Transport Nagar"]);
+  const [selectedAreas, setSelectedAreas] = useState<string[]>([]);
   const [isSearching, setIsSearching] = useState(false);
   const [error, setError] = useState<string | null>(null);
   // Keyword search results, fetched live so the box actually resolves places.
   const [suggestions, setSuggestions] = useState<LocationSearchResult[]>([]);
   const [showSuggestions, setShowSuggestions] = useState(false);
-  const hasTypedRef = useRef(false);
+  // Detection feedback — "Detecting…" while asking, then only a hint when
+  // there is nothing to show (no saved location either).
+  const [detecting, setDetecting] = useState(false);
+  const [hint, setHint] = useState<string | null>(null);
+  // Confirm stays disabled until a real place was chosen (detected, restored
+  // or picked) — nothing Kanpur-ish can be silently confirmed.
+  const [hasSelection, setHasSelection] = useState(false);
+  // True once the user drives the screen (typed, picked, tapped a chip);
+  // a late geolocation result must not stomp on their in-progress choice.
+  const interactedRef = useRef(false);
+  const detectSeqRef = useRef(0);
 
   const cityName = useMemo(() => {
     const displayName = selectedLocation.displayName || "Kanpur";
@@ -54,11 +72,11 @@ export function LocationScreen() {
     return firstSegment || "Kanpur";
   }, [selectedLocation.displayName]);
 
-  // Fetch matches as the owner types (debounced, cancellable) so entering a
+  // Fetch matches as the user types (debounced, cancellable) so entering a
   // keyword actually resolves places instead of leaving a dead input. Skipped
-  // until they type so the initial "Kanpur" value doesn't pop a list open.
+  // until they interact so a programmatic detection fill doesn't pop a list.
   useEffect(() => {
-    if (!hasTypedRef.current) return;
+    if (!interactedRef.current) return;
     const query = searchQuery.trim();
     if (query.length < 2) {
       setSuggestions([]);
@@ -83,13 +101,72 @@ export function LocationScreen() {
     };
   }, [searchQuery]);
 
-  const selectLocation = (next: LocationSearchResult) => {
+  /** Paints a location as the active choice (detection / restore / submit). */
+  const applySelection = useCallback((next: LocationSearchResult) => {
     setSelectedLocation(next);
-    // A fresh keyword result must not keep stale Kanpur chip selections —
+    setSelectedAreas([]);
+    setSearchQuery(locationLabelOf(next));
+    setHasSelection(true);
+    setError(null);
+    setShowSuggestions(false);
+  }, []);
+
+  /** A manual action invalidates any in-flight detection. */
+  const cancelDetection = useCallback(() => {
+    detectSeqRef.current += 1;
+    setDetecting(false);
+    setHint(null);
+  }, []);
+
+  // Asks the browser for the device location (permission prompt appears the
+  // first time) and reverse-geocodes the fix. Always callable — an explicit
+  // re-detect (e.g. Search on an empty box) may overwrite again.
+  const detectLocation = useCallback(() => {
+    const token = detectSeqRef.current + 1;
+    detectSeqRef.current = token;
+    const isStale = () => detectSeqRef.current !== token;
+    interactedRef.current = false;
+    setDetecting(true);
+    setHint(null);
+
+    void detectCurrentLocation().then((outcome) => {
+      if (isStale()) return;
+      setDetecting(false);
+
+      if (outcome.status === "located") {
+        // A user who already started searching/picking keeps their choice.
+        if (!interactedRef.current) applySelection(outcome.location);
+        return;
+      }
+
+      // Only nag when there is nothing to show — a restored saved location
+      // is a perfectly good answer when permission is off.
+      if (!interactedRef.current && !readStoredLocation()) {
+        setHint(outcome.status === "denied"
+          ? "Location access is off — allow it in your browser, or search your area."
+          : "Couldn't detect your location — search your area instead.");
+      }
+    });
+  }, [applySelection]);
+
+  // Mount: paint the saved choice instantly (if any), then always run
+  // detection so the screen locates the user instead of assuming a city.
+  useEffect(() => {
+    const stored = readStoredLocation();
+    if (stored) applySelection(stored);
+    detectLocation();
+  }, [applySelection, detectLocation]);
+
+  const selectLocation = (next: LocationSearchResult) => {
+    interactedRef.current = true;
+    cancelDetection();
+    setSelectedLocation(next);
+    // A fresh keyword result must not keep stale chip selections —
     // they would leak into the confirm payload's area fallback.
     setSelectedAreas([]);
     setShowSuggestions(false);
     setError(null);
+    setHasSelection(true);
   };
 
   // The famous-area chips are hardcoded Kanpur coordinates — showing them
@@ -101,10 +178,13 @@ export function LocationScreen() {
     event.preventDefault();
     const normalized = searchQuery.trim();
     if (!normalized) {
-      setError("Location nahi mili. Please try another area.");
+      // An empty box means "locate me" — re-run detection instead of erroring.
+      detectLocation();
       return;
     }
 
+    interactedRef.current = true;
+    cancelDetection();
     setIsSearching(true);
     setError(null);
 
@@ -131,6 +211,8 @@ export function LocationScreen() {
   };
 
   const toggleArea = (areaName: string) => {
+    interactedRef.current = true;
+    cancelDetection();
     const nextSelected = selectedAreas.includes(areaName)
       ? selectedAreas.filter((item) => item !== areaName)
       : [...selectedAreas, areaName];
@@ -152,10 +234,15 @@ export function LocationScreen() {
     };
 
     setSelectedLocation(nextLocation);
+    setHasSelection(true);
   };
 
   const confirmLocation = () => {
+    if (!hasSelection) return;
     const role = getSelectedRole() ?? "renter";
+    // Last-resort area fallback: the picked place's own name — never a
+    // hardcoded city (the previous "Panki" fallback leaked Kanpur).
+    const firstSegment = selectedLocation.displayName.split(",").map((item) => item.trim()).filter(Boolean)[0] ?? "";
     const payload = {
       role,
       latitude: selectedLocation.latitude,
@@ -163,7 +250,7 @@ export function LocationScreen() {
       // Prefer the geocoded city — the display-name's first segment is the
       // place itself (e.g. "Connaught Place"), not the city it sits in.
       city: selectedLocation.city || cityName,
-      area: selectedLocation.area ?? selectedAreas[0] ?? "Panki",
+      area: selectedLocation.area ?? selectedAreas[0] ?? firstSegment,
       displayName: selectedLocation.displayName,
     };
 
@@ -188,8 +275,11 @@ export function LocationScreen() {
               aria-label="Search your area"
               value={searchQuery}
               onChange={(event) => {
-                hasTypedRef.current = true;
-                setSearchQuery(event.target.value);
+                const value = event.target.value;
+                interactedRef.current = value.trim().length > 0;
+                // Typing takes over — a late geolocation fix must not stomp.
+                if (interactedRef.current) cancelDetection();
+                setSearchQuery(value);
               }}
               onBlur={(event) => {
                 // Only close when focus actually leaves the search widget —
@@ -227,6 +317,8 @@ export function LocationScreen() {
           )}
         </div>
 
+        {detecting && <p className="location-hint">Detecting your location…</p>}
+        {!detecting && hint && <p className="location-hint">{hint}</p>}
         {error && <p className="location-error" role="alert">{error}</p>}
 
         <div className="map-container">
@@ -273,7 +365,12 @@ export function LocationScreen() {
           </div>
         )}
 
-        <button type="button" className="confirm-location-button" onClick={confirmLocation}>
+        <button
+          type="button"
+          className="confirm-location-button"
+          onClick={confirmLocation}
+          disabled={!hasSelection}
+        >
           Confirm Location
         </button>
       </div>
