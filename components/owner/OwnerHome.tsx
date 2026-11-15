@@ -17,9 +17,14 @@ import { track } from "@/lib/analytics";
 import { durationDays, formatINR } from "@/lib/listing/config";
 import {
   LISTING_DRAFT_VERSION,
+  clearDraftMedia,
   clearListingDraft,
+  loadDraftMedia,
   loadListingDraft,
+  saveDraftMedia,
   saveListingDraft,
+  type DraftMediaDocument,
+  type DraftMediaPhoto,
   type ListingDraft,
 } from "@/lib/listing/draft-storage";
 import {
@@ -232,6 +237,7 @@ export function OwnerHome() {
   // Draft lifecycle refs: hydration gates the autosave, and a restored
   // location must not be overwritten by a fresh geolocation fix.
   const hydratedRef = useRef(false);
+  const mediaHydratedRef = useRef(false);
   const hasInteractedRef = useRef(false);
   const locationRestoredRef = useRef(false);
 
@@ -308,6 +314,38 @@ export function OwnerHome() {
       setDraftNotice("Picked up where you left off.");
     }
     hydratedRef.current = true;
+
+    // Files ride in IndexedDB next to the JSON draft (File isn't serializable
+    // into localStorage). Without this a refresh on Preview & Review restores
+    // the form but shows the placeholder image and an empty step 5.
+    void (async () => {
+      const media = draft ? await loadDraftMedia() : null;
+      if (media) {
+        const restoredPhotos: typeof photoFiles = {};
+        for (const [label, entry] of Object.entries(media.photos)) {
+          if (!(entry?.file instanceof File)) continue;
+          const previewUrl = URL.createObjectURL(entry.file);
+          photoPreviewUrlsRef.current.push(previewUrl);
+          restoredPhotos[label] = {
+            name: entry.name || entry.file.name,
+            previewUrl,
+            file: entry.file,
+            isVideo: Boolean(entry.isVideo),
+          };
+        }
+        const restoredDocuments: typeof documentFiles = {};
+        for (const [name, entry] of Object.entries(media.documents)) {
+          if (!(entry?.file instanceof File)) continue;
+          restoredDocuments[name] = { name: entry.name || entry.file.name, file: entry.file };
+        }
+        setPhotoFiles(restoredPhotos);
+        setDocumentFiles(restoredDocuments);
+      } else if (!draft) {
+        // No draft means an abandoned run — drop any leftover files.
+        void clearDraftMedia();
+      }
+      mediaHydratedRef.current = true;
+    })();
   }, []);
 
   // Debounced autosave (handoff §18): mirrors state to storage 1s after the
@@ -317,6 +355,26 @@ export function OwnerHome() {
     if (!hydratedRef.current || !hasInteractedRef.current) return;
     const timer = window.setTimeout(() => {
       saveListingDraft(snapshotDraft(currentStep, showReview));
+    }, 1000);
+    return () => window.clearTimeout(timer);
+  });
+
+  // Same debounce for the uploaded files. Gated on mediaHydratedRef so the
+  // empty pre-restore state can never wipe what IndexedDB is about to give
+  // back; an interaction without a draft is impossible (the CTA lives in the
+  // wizard), but the gate keeps the two stores in lockstep anyway.
+  useEffect(() => {
+    if (!mediaHydratedRef.current || !hasInteractedRef.current) return;
+    const timer = window.setTimeout(() => {
+      const photos: Record<string, DraftMediaPhoto> = {};
+      for (const [label, slot] of Object.entries(photoFiles)) {
+        photos[label] = { name: slot.name, isVideo: slot.isVideo, file: slot.file };
+      }
+      const documents: Record<string, DraftMediaDocument> = {};
+      for (const [name, slot] of Object.entries(documentFiles)) {
+        documents[name] = { name: slot.name, file: slot.file };
+      }
+      void saveDraftMedia({ photos, documents });
     }, 1000);
     return () => window.clearTimeout(timer);
   });
@@ -610,18 +668,14 @@ export function OwnerHome() {
   };
 
   // Review preview derives from real wizard state (handoff §11 — no sample
-  // copy or hardcoded ratings).
+  // copy or hardcoded ratings). Tags are exactly the Step 3 amenity picks —
+  // no loading-feature or space-type stand-ins when nothing was selected.
   const previewTitle = `${selectedSpaceType.replace(/-/g, " ") || "space"} in ${city || selectedLocation.city || "Kanpur"}`;
   const previewPhoto = useMemo(
     () => Object.values(photoFiles).find((photo) => !photo.isVideo) ?? Object.values(photoFiles)[0],
     [photoFiles],
   );
-  const previewTags = useMemo(() => {
-    const tags = [...selectedAmenities, ...selectedLoadingFeatures];
-    if (tags.length) return tags.slice(0, 5);
-    const spaceType = SPACE_TYPES.find((option) => option.id === selectedSpaceType);
-    return spaceType ? [spaceType.label] : [];
-  }, [selectedAmenities, selectedLoadingFeatures, selectedSpaceType]);
+  const previewTags = useMemo(() => selectedAmenities, [selectedAmenities]);
 
   // Move focus to the first invalid control after a failed Save & Continue.
   useEffect(() => {
@@ -765,6 +819,7 @@ export function OwnerHome() {
         };
         savePreviewListing(listing);
         clearListingDraft();
+        void clearDraftMedia();
         setDraftListingId(null);
         track("listing_submit_success", { mode: "preview" });
         router.replace(`/owner/submitted/${encodeURIComponent(listingId)}`);
@@ -876,6 +931,7 @@ export function OwnerHome() {
         throw new Error(submitResult.error || "Could not submit this listing.");
       }
       clearListingDraft();
+      void clearDraftMedia();
       setDraftListingId(null);
       track("listing_submit_success");
       router.replace(`/owner/submitted/${encodeURIComponent(submitResult.listing.id)}`);

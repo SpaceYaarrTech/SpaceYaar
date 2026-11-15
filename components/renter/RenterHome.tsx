@@ -393,20 +393,6 @@ export function RenterHome({ onRoleChange }: RenterHomeProps = {}) {
 
   return (
     <main className="renter-home-page" aria-label="Renter home screen">
-      <div className="status-bar" aria-hidden="true">
-        <span className="status-time">9:30</span>
-        <div className="status-icons">
-          <svg viewBox="0 0 24 24" className="status-signal" aria-hidden="true">
-            <path d="M3 15.5h2.2l1.8-3.2 2 5 2.2-4.8 1.8 2.5H21" />
-          </svg>
-          <svg viewBox="0 0 24 24" className="status-network" aria-hidden="true">
-            <path d="M3 10.5h16v8H3z" />
-            <path d="M18.5 13.5h2.5v5h-2.5" />
-          </svg>
-          <span className="battery-indicator" aria-hidden="true" />
-        </div>
-      </div>
-
       <div className="renter-toolbar">
         <div className="role-switcher" role="tablist" aria-label="Choose your role">
           <button

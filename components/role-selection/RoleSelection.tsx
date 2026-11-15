@@ -63,15 +63,6 @@ export function RoleSelection() {
 
   return (
     <main className="role-selection-page" aria-label="Choose your SpaceYaar experience">
-      <div className="status-bar" aria-hidden="true">
-        <span className="status-time">9:30</span>
-        <div className="status-icons">
-          <span className="status-icon status-icon-wifi" />
-          <span className="status-icon status-icon-signal" />
-          <span className="status-icon status-icon-battery" />
-        </div>
-      </div>
-
       <header className="brand-header">
         <span className="brand-logo" aria-hidden="true">
           <span className="brand-logo-line">Space</span>

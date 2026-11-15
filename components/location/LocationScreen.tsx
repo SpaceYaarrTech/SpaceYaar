@@ -118,15 +118,6 @@ export function LocationScreen() {
   return (
     <main className="location-page" aria-label="Location selection screen">
       <div className="location-page-inner">
-        <div className="status-row" aria-hidden="true">
-          <span className="status-time">9:30</span>
-          <div className="status-icons">
-            <svg viewBox="0 0 24 24"><path d="M3 15.5h1.5l1.8-3 2.2 5 2-4.5 1.5 2.5H21" /></svg>
-            <svg viewBox="0 0 24 24"><path d="M2 10.5h17.5v7.5H2z" /><path d="M20.5 13h1.5v5h-1.5" /></svg>
-            <span className="battery-level" />
-          </div>
-        </div>
-
         <h1 className="location-page-title">Aap kaha Jagah Dhudhne hain ?</h1>
 
         <form className="location-search" onSubmit={handleSearch}>

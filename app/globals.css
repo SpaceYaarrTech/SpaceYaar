@@ -128,11 +128,6 @@ a { color: inherit; text-decoration: none; }
   overflow: hidden;
 }
 
-.status-wifi, .status-signal, .status-battery {
-  width: 22px;
-  height: 22px;
-}
-
 .owner-header {
   display: flex;
   align-items: center;
@@ -3615,61 +3610,6 @@ a { color: inherit; text-decoration: none; }
   );
 }
 
-.status-icons {
-  position: absolute;
-  top: 14px;
-  left: 18px;
-  right: 18px;
-  z-index: 3;
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  color: rgba(255,255,255,0.96);
-  font-size: 11px;
-  letter-spacing: 0.04em;
-}
-
-.status-time {
-  font-weight: 700;
-}
-
-.status-right {
-  display: flex;
-  align-items: center;
-  gap: 5px;
-}
-
-.status-right svg {
-  width: 14px;
-  height: 14px;
-  fill: none;
-  stroke: currentColor;
-  stroke-width: 1.7;
-  stroke-linecap: round;
-  stroke-linejoin: round;
-}
-
-.battery-level {
-  display: inline-block;
-  width: 16px;
-  height: 8px;
-  border-radius: 2px;
-  border: 1.2px solid rgba(255,255,255,0.9);
-  position: relative;
-  background: rgba(255,255,255,0.15);
-}
-
-.battery-level::after {
-  content: "";
-  position: absolute;
-  top: 2px;
-  left: 2px;
-  bottom: 2px;
-  width: 10px;
-  border-radius: 2px;
-  background: rgba(255,255,255,0.95);
-}
-
 .onboarding-back {
   position: absolute;
   top: 54px;
@@ -3895,62 +3835,6 @@ a { color: inherit; text-decoration: none; }
   padding: 0 24px 24px;
   background: #ffffff;
   color: #222222;
-}
-
-.role-selection-page .status-bar {
-  box-sizing: border-box;
-  position: relative;
-  flex: none;
-  height: 44px;
-  padding: 18px 0 0;
-}
-
-.role-selection-page .status-time {
-  position: absolute;
-  left: 2px;
-  top: 20px;
-  min-width: 0;
-  font-size: 14px;
-  font-weight: 600;
-  line-height: 1;
-  letter-spacing: -0.04em;
-  color: #1d1b20;
-}
-
-.role-selection-page .status-icons {
-  inset: 0;
-  display: block;
-}
-
-.role-selection-page .status-icon {
-  position: absolute;
-  display: block;
-  background-repeat: no-repeat;
-  background-size: 100% 100%;
-}
-
-.role-selection-page .status-icon-wifi {
-  right: 29px;
-  top: 19px;
-  width: 18px;
-  height: 15px;
-  background-image: url("/images/status-wifi.png");
-}
-
-.role-selection-page .status-icon-signal {
-  right: 15px;
-  top: 19px;
-  width: 14px;
-  height: 15px;
-  background-image: url("/images/status-signal.png");
-}
-
-.role-selection-page .status-icon-battery {
-  right: 1px;
-  top: 18px;
-  width: 9px;
-  height: 16px;
-  background-image: url("/images/status-battery.png");
 }
 
 .brand-header {
@@ -4973,69 +4857,6 @@ a { color: inherit; text-decoration: none; }
   padding: 0 18px 0;
 }
 
-.status-row {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  padding-top: 10px;
-  color: #1f1d1c;
-}
-
-.status-time {
-  font-size: 18px;
-  font-weight: 700;
-  letter-spacing: -0.04em;
-}
-
-.status-icons {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  color: #1f1d1c;
-}
-
-.status-icons svg {
-  width: 18px;
-  height: 18px;
-  fill: none;
-  stroke: currentColor;
-  stroke-width: 1.7;
-  stroke-linecap: round;
-  stroke-linejoin: round;
-}
-
-.battery-level {
-  display: inline-block;
-  width: 24px;
-  height: 12px;
-  border: 1.4px solid currentColor;
-  border-radius: 3px;
-  position: relative;
-  background: rgba(31, 29, 28, 0.08);
-}
-
-.battery-level::after {
-  content: "";
-  position: absolute;
-  top: 2px;
-  right: -4px;
-  width: 2px;
-  height: 4px;
-  border-radius: 1px;
-  background: currentColor;
-}
-
-.battery-level::before {
-  content: "";
-  position: absolute;
-  top: 2px;
-  left: 2px;
-  bottom: 2px;
-  width: 14px;
-  border-radius: 1px;
-  background: currentColor;
-}
-
 .location-page-title {
   margin: 26px 0 18px;
   font-size: clamp(26px, 7vw, 30px);
@@ -5287,60 +5108,6 @@ a { color: inherit; text-decoration: none; }
 }
 
 .renter-home-page::-webkit-scrollbar { display: none; }
-
-.status-bar {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  padding: 2px 18px 0;
-  color: #262626;
-  font-size: 12px;
-  font-weight: 600;
-  letter-spacing: 0.02em;
-}
-
-.status-time { display: inline-flex; align-items: center; min-width: 28px; }
-
-.status-icons {
-  display: flex;
-  align-items: center;
-  justify-content: flex-end;
-  gap: 6px;
-  color: #202020;
-}
-
-.status-signal, .status-network {
-  width: 15px;
-  height: 15px;
-  fill: none;
-  stroke: currentColor;
-  stroke-width: 1.7;
-  stroke-linecap: round;
-  stroke-linejoin: round;
-}
-
-.status-network path:first-child { fill: none; }
-
-.battery-indicator {
-  position: relative;
-  display: inline-block;
-  width: 22px;
-  height: 10px;
-  border: 1.4px solid #1d1d1d;
-  border-radius: 3px;
-  background: linear-gradient(90deg, #1d1d1d 0 70%, rgba(29,29,29,0.2) 70% 100%);
-}
-
-.battery-indicator::after {
-  content: "";
-  position: absolute;
-  top: 2px;
-  right: -4px;
-  width: 2px;
-  height: 4px;
-  border-radius: 0 2px 2px 0;
-  background: #1d1d1d;
-}
 
 .renter-toolbar {
   display: flex;

@@ -110,3 +110,97 @@ export function clearListingDraft(): void {
     // Nothing to recover from; a stale draft is harmless.
   }
 }
+
+/**
+ * Media (photos/videos + KYC documents) can't live in the JSON draft — File
+ * blobs aren't serializable — so they ride in IndexedDB alongside it. Without
+ * this, a refresh on the Preview & Review screen restores the form but shows
+ * the placeholder image, and step 5 comes back empty.
+ */
+export type DraftMediaPhoto = { name: string; isVideo: boolean; file: File };
+export type DraftMediaDocument = { name: string; file: File };
+export type DraftMedia = {
+  photos: Record<string, DraftMediaPhoto>;
+  documents: Record<string, DraftMediaDocument>;
+};
+
+const MEDIA_DB_NAME = "spaceyaar-listing-media";
+const MEDIA_STORE_NAME = "draft";
+const MEDIA_KEY = "current";
+
+function openMediaDb(): Promise<IDBDatabase> {
+  return new Promise((resolve, reject) => {
+    const request = indexedDB.open(MEDIA_DB_NAME, 1);
+    request.onupgradeneeded = () => {
+      const db = request.result;
+      if (!db.objectStoreNames.contains(MEDIA_STORE_NAME)) db.createObjectStore(MEDIA_STORE_NAME);
+    };
+    request.onsuccess = () => resolve(request.result);
+    request.onerror = () => reject(request.error);
+  });
+}
+
+/** Persist the draft's files. Returns false when IndexedDB is unavailable. */
+export async function saveDraftMedia(media: DraftMedia): Promise<boolean> {
+  try {
+    const db = await openMediaDb();
+    try {
+      await new Promise<void>((resolve, reject) => {
+        const tx = db.transaction(MEDIA_STORE_NAME, "readwrite");
+        tx.objectStore(MEDIA_STORE_NAME).put(media, MEDIA_KEY);
+        tx.oncomplete = () => resolve();
+        tx.onerror = () => reject(tx.error);
+        tx.onabort = () => reject(tx.error);
+      });
+      return true;
+    } finally {
+      db.close();
+    }
+  } catch {
+    return false;
+  }
+}
+
+/** Read the saved files, or null when absent/unreadable. */
+export async function loadDraftMedia(): Promise<DraftMedia | null> {
+  try {
+    const db = await openMediaDb();
+    try {
+      const stored = await new Promise<DraftMedia | null>((resolve, reject) => {
+        const tx = db.transaction(MEDIA_STORE_NAME, "readonly");
+        const request = tx.objectStore(MEDIA_STORE_NAME).get(MEDIA_KEY);
+        request.onsuccess = () => resolve((request.result as DraftMedia | undefined) ?? null);
+        request.onerror = () => reject(request.error);
+      });
+      if (!stored || typeof stored !== "object") return null;
+      return {
+        photos: stored.photos && typeof stored.photos === "object" ? stored.photos : {},
+        documents: stored.documents && typeof stored.documents === "object" ? stored.documents : {},
+      };
+    } finally {
+      db.close();
+    }
+  } catch {
+    return null;
+  }
+}
+
+/** Drop the stored files — called alongside clearListingDraft on submit. */
+export async function clearDraftMedia(): Promise<void> {
+  try {
+    const db = await openMediaDb();
+    try {
+      await new Promise<void>((resolve, reject) => {
+        const tx = db.transaction(MEDIA_STORE_NAME, "readwrite");
+        tx.objectStore(MEDIA_STORE_NAME).delete(MEDIA_KEY);
+        tx.oncomplete = () => resolve();
+        tx.onerror = () => reject(tx.error);
+        tx.onabort = () => reject(tx.error);
+      });
+    } finally {
+      db.close();
+    }
+  } catch {
+    // Nothing to recover from; stale files are harmless.
+  }
+}
