@@ -1703,29 +1703,6 @@ export function OwnerHome() {
       }}
     >
       <div className="owner-shell">
-        <header className="owner-status-bar" aria-label="Status bar">
-          <span className="owner-status-time">9:30</span>
-          <div className="owner-status-icons" aria-hidden="true">
-            <svg viewBox="0 0 24 24" className="status-wifi" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
-              <path d="M2 8.5c5-5 15-5 20 0" />
-              <path d="M5.5 11.5c3.2-3.2 9.8-3.2 13 0" />
-              <path d="M9 15c1.6-1.6 4.4-1.6 6 0" />
-              <circle cx="12" cy="18.5" r="1.2" fill="currentColor" stroke="none" />
-            </svg>
-            <svg viewBox="0 0 24 24" className="status-signal" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
-              <path d="M5 16.5V10" />
-              <path d="M10 16.5V7" />
-              <path d="M15 16.5V4.5" />
-              <path d="M20 16.5V13" />
-            </svg>
-            <svg viewBox="0 0 24 24" className="status-battery" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
-              <rect x="3" y="7.5" width="17" height="9" rx="2.2" />
-              <path d="M20 10.5h2.2v3H20" />
-              <path d="M7 11.5h10v1H7z" />
-            </svg>
-          </div>
-        </header>
-
         {!showReview && (
           <>
             <div className="owner-header">
