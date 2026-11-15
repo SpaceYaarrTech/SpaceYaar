@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import dynamic from "next/dynamic";
 import { useRouter } from "next/navigation";
-import { Check, Mic, Minus, Plus, Search } from "lucide-react";
+import { Check, Crosshair, Mic, Minus, Plus, Search } from "lucide-react";
 import { getSelectedRole } from "@/lib/roles/role-storage";
 import { searchLocation, type LocationSearchResult } from "@/lib/maps/geocoding";
 import {
@@ -119,15 +119,18 @@ export function LocationScreen() {
   }, []);
 
   // Asks the browser for the device location (permission prompt appears the
-  // first time) and reverse-geocodes the fix. Always callable — an explicit
-  // re-detect (e.g. Search on an empty box) may overwrite again.
-  const detectLocation = useCallback(() => {
+  // first time) and reverse-geocodes the fix. `explicit` marks a deliberate
+  // tap (the "Use current location" row / Search on an empty box) — those
+  // always explain a failure; an automatic attempt only nags when there is
+  // nothing to show at all.
+  const detectLocation = useCallback((options?: { explicit?: boolean }) => {
     const token = detectSeqRef.current + 1;
     detectSeqRef.current = token;
     const isStale = () => detectSeqRef.current !== token;
     interactedRef.current = false;
     setDetecting(true);
     setHint(null);
+    setShowSuggestions(false);
 
     void detectCurrentLocation().then((outcome) => {
       if (isStale()) return;
@@ -139,9 +142,7 @@ export function LocationScreen() {
         return;
       }
 
-      // Only nag when there is nothing to show — a restored saved location
-      // is a perfectly good answer when permission is off.
-      if (!interactedRef.current && !readStoredLocation()) {
+      if (options?.explicit || (!interactedRef.current && !readStoredLocation())) {
         setHint(outcome.status === "denied"
           ? "Location access is off — allow it in your browser, or search your area."
           : "Couldn't detect your location — search your area instead.");
@@ -149,11 +150,17 @@ export function LocationScreen() {
     });
   }, [applySelection]);
 
-  // Mount: paint the saved choice instantly (if any), then always run
-  // detection so the screen locates the user instead of assuming a city.
+  // Mount: a saved choice paints in as-is — address pickers (Swiggy, Zomato,
+  // Amazon, Google place search) show the selected address rather than
+  // silently jumping to the device position; detection stays one tap away
+  // via "Use current location". With nothing saved, locate immediately —
+  // that first visit is where the permission prompt belongs.
   useEffect(() => {
     const stored = readStoredLocation();
-    if (stored) applySelection(stored);
+    if (stored) {
+      applySelection(stored);
+      return;
+    }
     detectLocation();
   }, [applySelection, detectLocation]);
 
@@ -179,7 +186,7 @@ export function LocationScreen() {
     const normalized = searchQuery.trim();
     if (!normalized) {
       // An empty box means "locate me" — re-run detection instead of erroring.
-      detectLocation();
+      detectLocation({ explicit: true });
       return;
     }
 
@@ -201,7 +208,9 @@ export function LocationScreen() {
         selectLocation(results[0]);
       }
     } catch (cause) {
-      const message = cause instanceof Error && cause.message.includes("timed out")
+      // System failures ("Location search timed out/busy…") pass through
+      // verbatim; only a genuine no-match gets the friendly message.
+      const message = cause instanceof Error && cause.message.startsWith("Location search")
         ? cause.message
         : "Location nahi mili. Please try another area.";
       setError(message);
@@ -317,8 +326,20 @@ export function LocationScreen() {
           )}
         </div>
 
-        {detecting && <p className="location-hint">Detecting your location…</p>}
-        {!detecting && hint && <p className="location-hint">{hint}</p>}
+        {/* The persistent affordance every major picker has: current location
+            on demand, one tap away, whether or not detection already ran. */}
+        <button
+          type="button"
+          className="use-current-location"
+          onClick={() => detectLocation({ explicit: true })}
+          disabled={detecting}
+        >
+          <Crosshair size={16} strokeWidth={2.2} aria-hidden="true" />
+          <span>Use current location</span>
+        </button>
+
+        {detecting && <p className="location-hint" role="status">Detecting your location…</p>}
+        {!detecting && hint && <p className="location-hint" role="status">{hint}</p>}
         {error && <p className="location-error" role="alert">{error}</p>}
 
         <div className="map-container">

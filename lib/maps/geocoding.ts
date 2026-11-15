@@ -11,6 +11,31 @@ const reverseCache = new Map<string, LocationSearchResult>();
 
 const normalizeQuery = (query: string) => query.trim().replace(/\s+/g, " ").toLowerCase();
 
+/** A search failure that knows whether retrying could plausibly help. */
+class SearchError extends Error {
+  constructor(message: string, readonly retryable: boolean) {
+    super(message);
+    this.name = "SearchError";
+  }
+}
+
+const sleep = (ms: number, signal?: AbortSignal): Promise<void> =>
+  new Promise((resolve, reject) => {
+    const onAbort = () => {
+      clearTimeout(timer);
+      reject(new DOMException("Aborted", "AbortError"));
+    };
+    const timer = setTimeout(() => {
+      signal?.removeEventListener("abort", onAbort);
+      resolve();
+    }, ms);
+    if (signal?.aborted) {
+      onAbort();
+      return;
+    }
+    signal?.addEventListener("abort", onAbort, { once: true });
+  });
+
 type NominatimAddress = {
   city?: string;
   town?: string;
@@ -45,22 +70,7 @@ const toResult = (item: NominatimItem): LocationSearchResult | null => {
   };
 };
 
-/**
- * Keyword search against OpenStreetMap Nominatim. Returns up to 5 matches so
- * the caller can show the user real options instead of silently picking one.
- *
- * `signal` lets the caller cancel in-flight work (debounced keystrokes). An
- * 8s internal timeout guarantees the UI never spins forever on a bad network;
- * a caller-initiated abort rejects with AbortError so it can be ignored.
- */
-export async function searchLocation(query: string, signal?: AbortSignal): Promise<LocationSearchResult[]> {
-  const normalized = normalizeQuery(query);
-  if (!normalized) return [];
-
-  if (geocodeCache.has(normalized)) {
-    return geocodeCache.get(normalized) ?? [];
-  }
-
+async function fetchSuggestions(normalized: string, signal?: AbortSignal): Promise<LocationSearchResult[]> {
   const params = new URLSearchParams({
     q: normalized,
     format: "jsonv2",
@@ -83,24 +93,27 @@ export async function searchLocation(query: string, signal?: AbortSignal): Promi
     });
 
     if (!response.ok) {
-      throw new Error("Location search unavailable");
+      // 429/5xx may clear up; other 4xx (bad request, blocked) will not.
+      const busy = response.status === 429 || response.status >= 500;
+      throw new SearchError(
+        busy ? "Location search is busy right now. Try again in a moment." : "Location search unavailable",
+        busy,
+      );
     }
 
     const rawResults = (await response.json()) as NominatimItem[];
-
-    const results = rawResults
+    return rawResults
       .map(toResult)
       .filter((item): item is LocationSearchResult => item !== null);
-
-    geocodeCache.set(normalized, results);
-    return results;
   } catch (cause) {
+    if (cause instanceof SearchError) throw cause;
     if (cause instanceof DOMException && cause.name === "AbortError") {
-      // Our 8s timeout vs. the caller cancelling — only the former is a failure.
+      // Our 8s cap vs. the caller cancelling — only the former may retry.
       if (signal?.aborted) throw cause;
-      throw new Error("Location search timed out. Try again.");
+      throw new SearchError("Location search timed out. Try again.", true);
     }
-    throw cause instanceof Error ? cause : new Error("Location search unavailable");
+    // Dropped connection / DNS blip — worth one more attempt.
+    throw new SearchError("Location search is busy right now. Try again in a moment.", true);
   } finally {
     clearTimeout(timer);
     signal?.removeEventListener("abort", relayAbort);
@@ -108,16 +121,38 @@ export async function searchLocation(query: string, signal?: AbortSignal): Promi
 }
 
 /**
- * Resolves coordinates back into a named place (used after the browser
- * grants a geolocation fix). Returns null on any failure so callers can fall
- * back to whatever location they already had.
+ * Keyword search against OpenStreetMap Nominatim. Returns up to 5 matches so
+ * the caller can show the user real options instead of silently picking one.
+ *
+ * `signal` lets the caller cancel in-flight work (debounced keystrokes). An
+ * 8s internal timeout guarantees the UI never spins forever, and one short
+ * retry absorbs Nominatim's occasional hangs — never applied to a caller
+ * abort or a hard (non-busy) HTTP failure.
  */
-export async function reverseGeocode(latitude: number, longitude: number): Promise<LocationSearchResult | null> {
-  // ~11m grid — repeated fixes for the same spot hit the cache, not Nominatim.
-  const cacheKey = `${latitude.toFixed(4)},${longitude.toFixed(4)}`;
-  const cached = reverseCache.get(cacheKey);
+export async function searchLocation(query: string, signal?: AbortSignal): Promise<LocationSearchResult[]> {
+  const normalized = normalizeQuery(query);
+  if (!normalized) return [];
+
+  const cached = geocodeCache.get(normalized);
   if (cached) return cached;
 
+  try {
+    const results = await fetchSuggestions(normalized, signal);
+    geocodeCache.set(normalized, results);
+    return results;
+  } catch (cause) {
+    const callerAborted = signal?.aborted ?? false;
+    const canRetry = !callerAborted && cause instanceof SearchError && cause.retryable;
+    if (!canRetry) throw cause;
+
+    await sleep(1200, signal); // rejects with AbortError if the caller cancels
+    const results = await fetchSuggestions(normalized, signal);
+    geocodeCache.set(normalized, results);
+    return results;
+  }
+}
+
+async function fetchReverse(latitude: number, longitude: number): Promise<LocationSearchResult | null> {
   const params = new URLSearchParams({
     lat: latitude.toFixed(6),
     lon: longitude.toFixed(6),
@@ -141,12 +176,34 @@ export async function reverseGeocode(latitude: number, longitude: number): Promi
     if (!response.ok) return null;
 
     const raw = (await response.json()) as NominatimItem;
-    const result = toResult(raw);
-    if (result) reverseCache.set(cacheKey, result);
-    return result;
+    return toResult(raw);
   } catch {
     return null;
   } finally {
     clearTimeout(timer);
   }
+}
+
+/**
+ * Resolves coordinates back into a named place (used after the browser
+ * grants a geolocation fix). Returns null on any failure so callers can fall
+ * back to whatever location they already had.
+ */
+export async function reverseGeocode(latitude: number, longitude: number): Promise<LocationSearchResult | null> {
+  // ~11m grid — repeated fixes for the same spot hit the cache, not Nominatim.
+  const cacheKey = `${latitude.toFixed(4)},${longitude.toFixed(4)}`;
+  const cached = reverseCache.get(cacheKey);
+  if (cached) return cached;
+
+  const first = await fetchReverse(latitude, longitude);
+  if (first) {
+    reverseCache.set(cacheKey, first);
+    return first;
+  }
+
+  // One quick retry — Nominatim occasionally drops the first connection.
+  await sleep(1000);
+  const second = await fetchReverse(latitude, longitude);
+  if (second) reverseCache.set(cacheKey, second);
+  return second;
 }
