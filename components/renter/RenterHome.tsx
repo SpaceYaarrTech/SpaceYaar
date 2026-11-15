@@ -16,6 +16,8 @@ import { LoginGateModal } from "@/components/auth/LoginGateModal";
 import { RenterBottomNavigation } from "@/components/renter/RenterBottomNavigation";
 import { isGuestLoginRequired } from "@/lib/auth/guest-session";
 import { getSelectedRole, setSelectedRole } from "@/lib/roles/role-storage";
+import { useRenterProfile } from "@/lib/renter/profile-data";
+import { createClient } from "@/lib/supabase/client";
 import type { UserRole } from "@/types/roles";
 
 type FilterKey =
@@ -35,8 +37,11 @@ const FILTERS: { key: FilterKey; label: string }[] = [
   { key: "discount", label: "Discount" },
 ];
 
+// No filter is pre-selected: an empty selection shows every available
+// listing. "Price Range" is a plain toggle (it has no narrowing rule of its
+// own — the other chips carry the actual predicates).
 const INITIAL_FILTERS: Record<FilterKey, boolean> = {
-  priceRange: true,
+  priceRange: false,
   availability: false,
   within1km: false,
   for15Days: false,
@@ -204,6 +209,36 @@ export function RenterHome({ onRoleChange }: RenterHomeProps = {}) {
   const [loginGate, setLoginGate] = useState<{ title: string; description: string; nextPath: string } | null>(null);
   const handledRebookId = useRef<string | null>(null);
 
+  // Greeting name: the saved profile first, then whatever the login provider
+  // handed us (Google puts it in user_metadata). Guests and phone-OTP users
+  // have neither — they get the neutral fallback in the markup below.
+  const { profile } = useRenterProfile();
+  const [loginName, setLoginName] = useState("");
+
+  useEffect(() => {
+    let cancelled = false;
+    const readLoginName = async () => {
+      const { data } = await createClient().auth.getSession();
+      if (cancelled) return;
+      const meta = data.session?.user?.user_metadata as Record<string, unknown> | undefined;
+      const name = typeof meta?.full_name === "string"
+        ? meta.full_name
+        : typeof meta?.name === "string"
+          ? meta.name
+          : "";
+      setLoginName(name);
+    };
+    readLoginName().catch(() => {
+      // Supabase isn't configured in local dev — the greeting just falls back.
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  const greetingName = profile?.display_name?.trim() || loginName.trim();
+  const greetingFirstName = greetingName ? greetingName.split(/\s+/)[0] : "";
+
   useEffect(() => {
     const storedRole = getSelectedRole();
     if (storedRole && storedRole !== selectedRole) {
@@ -327,7 +362,7 @@ export function RenterHome({ onRoleChange }: RenterHomeProps = {}) {
   };
 
   const filteredListings = useMemo(() => {
-    const active = Object.entries(selectedFilters).filter(([, isSelected]) => isSelected);
+    const active = Object.values(selectedFilters).filter(Boolean);
 
     if (!active.length) {
       return listings;
@@ -355,11 +390,7 @@ export function RenterHome({ onRoleChange }: RenterHomeProps = {}) {
       next = next.filter((listing) => listing.feature !== "24/7 Security");
     }
 
-    if (selectedFilters.priceRange) {
-      return next;
-    }
-
-    return next.length ? next : [];
+    return next;
   }, [listings, selectedFilters]);
 
   const handleRoleChange = (nextRole: UserRole) => {
@@ -379,16 +410,7 @@ export function RenterHome({ onRoleChange }: RenterHomeProps = {}) {
   };
 
   const toggleFilter = (filterKey: FilterKey) => {
-    setSelectedFilters((current) => {
-      const next = { ...current, [filterKey]: !current[filterKey] };
-      if (filterKey === "priceRange" && next.priceRange === false) {
-        next.priceRange = true;
-      }
-      if (filterKey !== "priceRange") {
-        next.priceRange = false;
-      }
-      return next;
-    });
+    setSelectedFilters((current) => ({ ...current, [filterKey]: !current[filterKey] }));
   };
 
   return (
@@ -429,7 +451,7 @@ export function RenterHome({ onRoleChange }: RenterHomeProps = {}) {
             <span>Industrial estate Dada nagar, Kanpur</span>
             <MapPin size={10} strokeWidth={2.3} />
           </div>
-          <h1>Hey! Swad?</h1>
+          <h1>{greetingFirstName ? `Hey! ${greetingFirstName}` : "Hey there!"}</h1>
         </div>
 
         <button
