@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import dynamic from "next/dynamic";
 import { useRouter } from "next/navigation";
 import { Check, Mic, Minus, Plus, Search } from "lucide-react";
@@ -43,12 +43,59 @@ export function LocationScreen() {
   const [selectedAreas, setSelectedAreas] = useState<string[]>(["Panki", "Transport Nagar"]);
   const [isSearching, setIsSearching] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  // Keyword search results, fetched live so the box actually resolves places.
+  const [suggestions, setSuggestions] = useState<LocationSearchResult[]>([]);
+  const [showSuggestions, setShowSuggestions] = useState(false);
+  const hasTypedRef = useRef(false);
 
   const cityName = useMemo(() => {
     const displayName = selectedLocation.displayName || "Kanpur";
     const firstSegment = displayName.split(",").map((item) => item.trim()).filter(Boolean)[0];
     return firstSegment || "Kanpur";
   }, [selectedLocation.displayName]);
+
+  // Fetch matches as the owner types (debounced, cancellable) so entering a
+  // keyword actually resolves places instead of leaving a dead input. Skipped
+  // until they type so the initial "Kanpur" value doesn't pop a list open.
+  useEffect(() => {
+    if (!hasTypedRef.current) return;
+    const query = searchQuery.trim();
+    if (query.length < 2) {
+      setSuggestions([]);
+      setShowSuggestions(false);
+      return;
+    }
+    const controller = new AbortController();
+    const timer = window.setTimeout(() => {
+      searchLocation(query, controller.signal)
+        .then((results) => {
+          if (controller.signal.aborted) return;
+          setSuggestions(results);
+          setShowSuggestions(true);
+        })
+        .catch(() => {
+          if (!controller.signal.aborted) setSuggestions([]);
+        });
+    }, 700);
+    return () => {
+      window.clearTimeout(timer);
+      controller.abort();
+    };
+  }, [searchQuery]);
+
+  const selectLocation = (next: LocationSearchResult) => {
+    setSelectedLocation(next);
+    // A fresh keyword result must not keep stale Kanpur chip selections —
+    // they would leak into the confirm payload's area fallback.
+    setSelectedAreas([]);
+    setShowSuggestions(false);
+    setError(null);
+  };
+
+  // The famous-area chips are hardcoded Kanpur coordinates — showing them
+  // under "Famous Areas in Connaught Place" would be nonsense.
+  const showFamousAreas = /kanpur/i.test(selectedLocation.city ?? "")
+    || /kanpur/i.test(selectedLocation.displayName ?? "");
 
   const handleSearch = async (event: React.FormEvent<HTMLFormElement>) => {
     event.preventDefault();
@@ -66,11 +113,18 @@ export function LocationScreen() {
       if (!results.length) {
         throw new Error("not found");
       }
-
-      const nextLocation = results[0];
-      setSelectedLocation(nextLocation);
-    } catch {
-      setError("Location nahi mili. Please try another area.");
+      setSuggestions(results);
+      setShowSuggestions(true);
+      // One unambiguous match applies immediately; multiple matches are left
+      // open for the owner to pick from the list.
+      if (results.length === 1) {
+        selectLocation(results[0]);
+      }
+    } catch (cause) {
+      const message = cause instanceof Error && cause.message.includes("timed out")
+        ? cause.message
+        : "Location nahi mili. Please try another area.";
+      setError(message);
     } finally {
       setIsSearching(false);
     }
@@ -86,11 +140,14 @@ export function LocationScreen() {
     const matchedArea = famousAreas.find((area) => area.name === areaName);
     if (!matchedArea) return;
 
+    // Keep the city stable across chip taps — deriving it from the first
+    // display-name segment would turn "Panki" into the city after one tap.
+    const city = selectedLocation.city || cityName;
     const nextLocation: LocationSearchResult = {
       latitude: matchedArea.lat,
       longitude: matchedArea.lng,
-      displayName: `${matchedArea.name}, ${cityName}, Uttar Pradesh, India`,
-      city: cityName,
+      displayName: `${matchedArea.name}, ${city}, Uttar Pradesh, India`,
+      city,
       area: matchedArea.name,
     };
 
@@ -103,7 +160,9 @@ export function LocationScreen() {
       role,
       latitude: selectedLocation.latitude,
       longitude: selectedLocation.longitude,
-      city: cityName,
+      // Prefer the geocoded city — the display-name's first segment is the
+      // place itself (e.g. "Connaught Place"), not the city it sits in.
+      city: selectedLocation.city || cityName,
       area: selectedLocation.area ?? selectedAreas[0] ?? "Panki",
       displayName: selectedLocation.displayName,
     };
@@ -120,23 +179,53 @@ export function LocationScreen() {
       <div className="location-page-inner">
         <h1 className="location-page-title">Aap kaha Jagah Dhudhne hain ?</h1>
 
-        <form className="location-search" onSubmit={handleSearch}>
-          <label className="sr-only" htmlFor="location-search">Search your area</label>
-          <Search className="search-icon" size={20} />
-          <input
-            id="location-search"
-            aria-label="Search your area"
-            value={searchQuery}
-            onChange={(event) => setSearchQuery(event.target.value)}
-            placeholder="Search your area"
-          />
-          <button type="button" className="voice-button" aria-label="Voice search">
-            <Mic size={18} />
-          </button>
-          <button type="submit" className="search-submit" aria-label="Search location" disabled={isSearching}>
-            {isSearching ? "..." : "Search"}
-          </button>
-        </form>
+        <div className="location-search-wrap">
+          <form className="location-search" onSubmit={handleSearch}>
+            <label className="sr-only" htmlFor="location-search">Search your area</label>
+            <Search className="search-icon" size={20} />
+            <input
+              id="location-search"
+              aria-label="Search your area"
+              value={searchQuery}
+              onChange={(event) => {
+                hasTypedRef.current = true;
+                setSearchQuery(event.target.value);
+              }}
+              onBlur={(event) => {
+                // Only close when focus actually leaves the search widget —
+                // tapping Search or a suggestion must not race the list shut.
+                const next = event.relatedTarget as Node | null;
+                const wrap = event.currentTarget.closest(".location-search-wrap");
+                if (next && wrap?.contains(next)) return;
+                window.setTimeout(() => setShowSuggestions(false), 150);
+              }}
+              placeholder="Search your area"
+            />
+            <button type="button" className="voice-button" aria-label="Voice search">
+              <Mic size={18} />
+            </button>
+            <button type="submit" className="search-submit" aria-label="Search location" disabled={isSearching}>
+              {isSearching ? "..." : "Search"}
+            </button>
+          </form>
+
+          {showSuggestions && suggestions.length > 0 && (
+            <ul className="location-suggestions" role="listbox" aria-label="Matching locations">
+              {suggestions.map((item) => (
+                <li key={`${item.latitude},${item.longitude}`}>
+                  <button
+                    type="button"
+                    className="location-suggestion"
+                    onMouseDown={(event) => event.preventDefault()}
+                    onClick={() => selectLocation(item)}
+                  >
+                    <span>{item.displayName}</span>
+                  </button>
+                </li>
+              ))}
+            </ul>
+          )}
+        </div>
 
         {error && <p className="location-error" role="alert">{error}</p>}
 
@@ -161,26 +250,28 @@ export function LocationScreen() {
           </div>
         </div>
 
-        <div className="famous-area-block">
-          <h2 className="famous-areas-title">Famous Areas in {cityName}</h2>
-          <div className="chip-grid">
-            {famousAreas.map((area) => {
-              const isSelected = selectedAreas.includes(area.name);
-              return (
-                <button
-                  key={area.name}
-                  type="button"
-                  className={isSelected ? "area-chip selected" : "area-chip"}
-                  aria-pressed={isSelected}
-                  onClick={() => toggleArea(area.name)}
-                >
-                  {isSelected && <Check size={14} className="chip-check" />}
-                  <span>{area.name}</span>
-                </button>
-              );
-            })}
+        {showFamousAreas && (
+          <div className="famous-area-block">
+            <h2 className="famous-areas-title">Famous Areas in {selectedLocation.city || cityName}</h2>
+            <div className="chip-grid">
+              {famousAreas.map((area) => {
+                const isSelected = selectedAreas.includes(area.name);
+                return (
+                  <button
+                    key={area.name}
+                    type="button"
+                    className={isSelected ? "area-chip selected" : "area-chip"}
+                    aria-pressed={isSelected}
+                    onClick={() => toggleArea(area.name)}
+                  >
+                    {isSelected && <Check size={14} className="chip-check" />}
+                    <span>{area.name}</span>
+                  </button>
+                );
+              })}
+            </div>
           </div>
-        </div>
+        )}
 
         <button type="button" className="confirm-location-button" onClick={confirmLocation}>
           Confirm Location

@@ -211,7 +211,17 @@ export default function SearchPage() {
 
   const changeOrigin = (nextOrigin: [number, number]) => {
     setOrigin(nextOrigin);
+    // Keep any display fields (area/city/displayName) the location screen
+    // wrote — overwriting with bare coordinates would wipe the renter-home
+    // location line back to its default.
+    let existing: Record<string, unknown> = {};
+    try {
+      existing = JSON.parse(window.sessionStorage.getItem("spaceyaar-selected-location") || "{}") as Record<string, unknown>;
+    } catch {
+      existing = {};
+    }
     window.sessionStorage.setItem("spaceyaar-selected-location", JSON.stringify({
+      ...existing,
       latitude: nextOrigin[0],
       longitude: nextOrigin[1],
     }));

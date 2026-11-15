@@ -239,6 +239,25 @@ export function RenterHome({ onRoleChange }: RenterHomeProps = {}) {
   const greetingName = profile?.display_name?.trim() || loginName.trim();
   const greetingFirstName = greetingName ? greetingName.split(/\s+/)[0] : "";
 
+  // Location line mirrors what the owner confirmed on /location; the demo
+  // default stays until a selection exists (or a legacy writer left only
+  // coordinates, in which case there is nothing to show but the default).
+  const [locationLabel, setLocationLabel] = useState("Industrial estate Dada nagar, Kanpur");
+
+  useEffect(() => {
+    try {
+      const stored = window.sessionStorage.getItem("spaceyaar-selected-location");
+      if (!stored) return;
+      const parsed = JSON.parse(stored) as { area?: unknown; city?: unknown };
+      const area = typeof parsed.area === "string" ? parsed.area.trim() : "";
+      const city = typeof parsed.city === "string" ? parsed.city.trim() : "";
+      const label = [area, city].filter(Boolean).join(", ");
+      if (label) setLocationLabel(label);
+    } catch {
+      // Unreadable payload — keep the default line.
+    }
+  }, []);
+
   useEffect(() => {
     const storedRole = getSelectedRole();
     if (storedRole && storedRole !== selectedRole) {
@@ -447,10 +466,15 @@ export function RenterHome({ onRoleChange }: RenterHomeProps = {}) {
 
       <div className="header-row">
         <div className="location-greeting">
-          <div className="location-line">
-            <span>Industrial estate Dada nagar, Kanpur</span>
+          <button
+            type="button"
+            className="location-line"
+            aria-label={`Change location. Current: ${locationLabel}`}
+            onClick={() => router.push("/location")}
+          >
+            <span>{locationLabel}</span>
             <MapPin size={10} strokeWidth={2.3} />
-          </div>
+          </button>
           <h1>{greetingFirstName ? `Hey! ${greetingFirstName}` : "Hey there!"}</h1>
         </div>
 
