@@ -74,11 +74,11 @@ export function LocationScreen() {
 
   // Fetch matches as the user types (debounced, cancellable) so entering a
   // keyword actually resolves places instead of leaving a dead input. Skipped
-  // until they interact so a programmatic detection fill doesn't pop a list.
+  // until they interact so a programmatic detection fill doesn't pop a list —
+  // and clearing the box closes any open list.
   useEffect(() => {
-    if (!interactedRef.current) return;
     const query = searchQuery.trim();
-    if (query.length < 2) {
+    if (!interactedRef.current || query.length < 2) {
       setSuggestions([]);
       setShowSuggestions(false);
       return;

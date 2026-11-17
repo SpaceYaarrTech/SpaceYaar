@@ -1,11 +1,13 @@
 "use client";
 
-import { Filter, Search, SlidersHorizontal, X } from "lucide-react";
+import { Crosshair, Filter, Search, SlidersHorizontal, X } from "lucide-react";
 import dynamic from "next/dynamic";
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { RenterBottomNavigation } from "@/components/renter/RenterBottomNavigation";
 import { RenterListingCard, type RenterListingRecord } from "@/components/renter/RenterListingCard";
 import type { SearchMapMarker } from "@/components/renter/SearchResultsMap";
+import { searchLocation, type LocationSearchResult } from "@/lib/maps/geocoding";
+import { detectCurrentLocation, persistLocation } from "@/lib/maps/current-location";
 
 const SearchResultsMap = dynamic(
   () => import("@/components/renter/SearchResultsMap").then((module) => module.SearchResultsMap),
@@ -63,9 +65,45 @@ export default function SearchPage() {
   const [error, setError] = useState("");
   const [favoriteError, setFavoriteError] = useState("");
 
+  // --- Location search: the same behaviour as the location screen ---
+  const [suggestions, setSuggestions] = useState<LocationSearchResult[]>([]);
+  const [showSuggestions, setShowSuggestions] = useState(false);
+  const [locating, setLocating] = useState(false);
+  const [locationHint, setLocationHint] = useState<string | null>(null);
+  // True once the user types — gates the live fetch so a restored ?q= filter
+  // never pops a location list on load.
+  const interactedRef = useRef(false);
+  const detectSeqRef = useRef(0);
+
+  /** A manual action invalidates any in-flight detection. */
+  const cancelDetection = useCallback(() => {
+    detectSeqRef.current += 1;
+    setLocating(false);
+    setLocationHint(null);
+  }, []);
+
+  /** An origin means distance ordering — unless they chose a price sort. */
+  const adoptOrigin = useCallback((coords: [number, number]) => {
+    setOrigin(coords);
+    setSort((current) => (current === "recent" ? "nearest" : current));
+  }, []);
+
+  /** A place picked from suggestions / detected — becomes the search origin. */
+  const applyPickedLocation = useCallback((next: LocationSearchResult) => {
+    persistLocation(next, "renter");
+    adoptOrigin([next.latitude, next.longitude]);
+    // The intent was "search around here", not a text match on the place name.
+    setQuery("");
+    interactedRef.current = false;
+    setSuggestions([]);
+    setShowSuggestions(false);
+    setLocationHint(null);
+  }, [adoptOrigin]);
+
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
-    setQuery(params.get("q") ?? "");
+    const restoredQuery = params.get("q") ?? "";
+    setQuery(restoredQuery);
     setMinimumPrice(params.get("minPrice") ?? "");
     setMaximumPrice(params.get("maxPrice") ?? "");
     setMinimumArea(params.get("minArea") ?? "");
@@ -80,9 +118,10 @@ export default function SearchPage() {
         if (Number.isFinite(location.latitude) && Number.isFinite(location.longitude)) {
           setOrigin([location.latitude as number, location.longitude as number]);
           setSort(requestedSort ?? "nearest");
-        } else {
-          setSort(requestedSort ?? "recent");
+          // A saved choice stands — same as /location, never auto-stomped.
+          return;
         }
+        setSort(requestedSort ?? "recent");
       } else {
         setSort(requestedSort ?? "recent");
       }
@@ -90,7 +129,54 @@ export default function SearchPage() {
       setOrigin(null);
       setSort(requestedSort ?? "recent");
     }
-  }, []);
+
+    // Nothing saved — locate once (the same first-visit behaviour as the home
+    // and location screens). A restored text filter is intent too, so a late
+    // fix must never wipe it.
+    if (restoredQuery.trim()) return;
+    const token = detectSeqRef.current + 1;
+    detectSeqRef.current = token;
+    setLocating(true);
+    void detectCurrentLocation().then((outcome) => {
+      if (detectSeqRef.current !== token) return;
+      setLocating(false);
+      if (outcome.status === "located") {
+        applyPickedLocation(outcome.location);
+        return;
+      }
+      setLocationHint(outcome.status === "denied"
+        ? "Location access is off — allow it in your browser, or search an area."
+        : "Couldn't detect your location — search an area instead.");
+    });
+  }, [applyPickedLocation]);
+
+  // Fetch matches as the user types (debounced, cancellable) so entering a
+  // keyword actually resolves places — the same live lookup as /location.
+  useEffect(() => {
+    const trimmed = query.trim();
+    if (!interactedRef.current || trimmed.length < 2) {
+      // Nothing typed (or too short) → no list; clearing the box closes it.
+      setSuggestions([]);
+      setShowSuggestions(false);
+      return;
+    }
+    const controller = new AbortController();
+    const timer = window.setTimeout(() => {
+      searchLocation(trimmed, controller.signal)
+        .then((results) => {
+          if (controller.signal.aborted) return;
+          setSuggestions(results);
+          setShowSuggestions(true);
+        })
+        .catch(() => {
+          if (!controller.signal.aborted) setSuggestions([]);
+        });
+    }, 700);
+    return () => {
+      window.clearTimeout(timer);
+      controller.abort();
+    };
+  }, [query]);
 
   useEffect(() => {
     let current = true;
@@ -210,7 +296,8 @@ export default function SearchPage() {
   };
 
   const changeOrigin = (nextOrigin: [number, number]) => {
-    setOrigin(nextOrigin);
+    cancelDetection();
+    adoptOrigin(nextOrigin);
     // Keep any display fields (area/city/displayName) the location screen
     // wrote — overwriting with bare coordinates would wipe the renter-home
     // location line back to its default.
@@ -225,6 +312,27 @@ export default function SearchPage() {
       latitude: nextOrigin[0],
       longitude: nextOrigin[1],
     }));
+  };
+
+  const handleUseCurrentLocation = () => {
+    const token = detectSeqRef.current + 1;
+    detectSeqRef.current = token;
+    interactedRef.current = false; // explicit tap: a typed filter must not block the fix
+    setLocating(true);
+    setLocationHint(null);
+    setShowSuggestions(false);
+    void detectCurrentLocation().then((outcome) => {
+      if (detectSeqRef.current !== token) return;
+      setLocating(false);
+      if (outcome.status === "located") {
+        applyPickedLocation(outcome.location);
+        return;
+      }
+      // An explicit tap always explains itself.
+      setLocationHint(outcome.status === "denied"
+        ? "Location access is off — allow it in your browser, or search an area."
+        : "Couldn't detect your location — search an area instead.");
+    });
   };
 
   const selectMarker = (listingId: string) => {
@@ -243,19 +351,75 @@ export default function SearchPage() {
   return (
     <main className="renter-flow-page renter-search-page">
       <header className="renter-page-header"><h1>Find a Space</h1></header>
-      <label className="renter-search-input">
-        <Search size={18} aria-hidden="true" />
-        <input
-          type="search"
-          value={query}
-          onChange={(event) => setQuery(event.target.value)}
-          placeholder="Search location size area pincode .etc"
-          aria-label="Search location, space name, area or pincode"
-        />
-        <button type="button" aria-label="Open filters" aria-expanded={filtersOpen} onClick={() => setFiltersOpen((open) => !open)}>
-          <Filter size={18} />
-        </button>
-      </label>
+      <div className="location-search-wrap">
+        <label className="renter-search-input">
+          <Search size={18} aria-hidden="true" />
+          <input
+            type="search"
+            value={query}
+            onChange={(event) => {
+              const value = event.target.value;
+              const typed = value.trim().length > 0;
+              interactedRef.current = typed;
+              // Typing takes over — a late geolocation fix must not stomp.
+              if (typed) cancelDetection();
+              setQuery(value);
+            }}
+            onKeyDown={(event) => {
+              if (event.key === "Enter" && showSuggestions && suggestions.length > 0) {
+                event.preventDefault();
+                interactedRef.current = false;
+                cancelDetection();
+                applyPickedLocation(suggestions[0]);
+              }
+            }}
+            onBlur={(event) => {
+              // Only close when focus actually leaves the search widget —
+              // tapping a suggestion must not race the list shut.
+              const next = event.relatedTarget as Node | null;
+              const wrap = event.currentTarget.closest(".location-search-wrap");
+              if (next && wrap?.contains(next)) return;
+              window.setTimeout(() => setShowSuggestions(false), 150);
+            }}
+            placeholder="Search location size area pincode .etc"
+            aria-label="Search location, space name, area or pincode"
+          />
+          <button type="button" aria-label="Open filters" aria-expanded={filtersOpen} onClick={() => setFiltersOpen((open) => !open)}>
+            <Filter size={18} />
+          </button>
+        </label>
+
+        {showSuggestions && suggestions.length > 0 && (
+          <ul className="location-suggestions" role="listbox" aria-label="Matching locations">
+            {suggestions.map((item) => (
+              <li key={`${item.latitude},${item.longitude}`}>
+                <button
+                  type="button"
+                  className="location-suggestion"
+                  onMouseDown={(event) => event.preventDefault()}
+                  onClick={() => {
+                    interactedRef.current = false;
+                    cancelDetection();
+                    applyPickedLocation(item);
+                  }}
+                >
+                  <span>{item.displayName}</span>
+                </button>
+              </li>
+            ))}
+          </ul>
+        )}
+      </div>
+
+      {/* The same persistent affordance the location screen keeps: current
+          location on demand, one tap away. */}
+      <button type="button" className="use-current-location" onClick={handleUseCurrentLocation} disabled={locating}>
+        <Crosshair size={16} strokeWidth={2.2} aria-hidden="true" />
+        <span>Use current location</span>
+      </button>
+
+      {locating && <p className="location-hint" role="status">Detecting your location…</p>}
+      {!locating && locationHint && <p className="location-hint" role="status">{locationHint}</p>}
 
       <div className="renter-filter-row">
         {minimumPrice || maximumPrice ? <button type="button" className="renter-filter-chip" onClick={() => { setMinimumPrice(""); setMaximumPrice(""); }}>Price: ₹{minimumPrice || "0"}–{maximumPrice || "∞"} <X size={12} /></button> : null}
@@ -273,7 +437,7 @@ export default function SearchPage() {
             <label>Minimum size (sq ft)<input inputMode="numeric" type="number" min="0" value={minimumArea} onChange={(event) => setMinimumArea(event.target.value)} /></label>
           </div>
           <label className="renter-radius-filter"><input type="checkbox" checked={withinOneKm} onChange={(event) => setWithinOneKm(event.target.checked)} /> Within 1 km of my location</label>
-          {!origin && withinOneKm && <p className="renter-filter-hint">Use the map location button to enable distance filtering.</p>}
+          {!origin && withinOneKm && <p className="renter-filter-hint">Use current location or the map button to enable distance filtering.</p>}
         </section>
       )}
 
