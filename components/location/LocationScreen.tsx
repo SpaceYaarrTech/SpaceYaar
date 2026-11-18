@@ -78,6 +78,9 @@ export function LocationScreen() {
   // and clearing the box closes any open list.
   useEffect(() => {
     const query = searchQuery.trim();
+    // A new query invalidates the previous settled outcome — a stale
+    // no-match/system message must not linger while the new lookup runs.
+    setError(null);
     if (!interactedRef.current || query.length < 2) {
       setSuggestions([]);
       setShowSuggestions(false);
@@ -89,10 +92,21 @@ export function LocationScreen() {
         .then((results) => {
           if (controller.signal.aborted) return;
           setSuggestions(results);
-          setShowSuggestions(true);
+          setShowSuggestions(results.length > 0);
+          // A settled empty lookup must say so — a blank screen below a
+          // typed query reads as "the page is broken" (same message the
+          // Enter path shows).
+          if (!results.length) setError("Location nahi mili. Please try another area.");
         })
-        .catch(() => {
-          if (!controller.signal.aborted) setSuggestions([]);
+        .catch((cause) => {
+          if (controller.signal.aborted) return;
+          setSuggestions([]);
+          setShowSuggestions(false);
+          // Same rule as the Enter path: system failures pass through
+          // verbatim, anything else gets the friendly no-match message.
+          setError(cause instanceof Error && cause.message.startsWith("Location search")
+            ? cause.message
+            : "Location nahi mili. Please try another area.");
         });
     }, 700);
     return () => {

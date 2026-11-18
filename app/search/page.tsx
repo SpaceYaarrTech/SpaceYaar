@@ -154,6 +154,9 @@ export default function SearchPage() {
   // keyword actually resolves places — the same live lookup as /location.
   useEffect(() => {
     const trimmed = query.trim();
+    // A new query invalidates the previous search feedback — a stale no-match
+    // message must not linger while the new lookup runs.
+    setLocationHint(null);
     if (!interactedRef.current || trimmed.length < 2) {
       // Nothing typed (or too short) → no list; clearing the box closes it.
       setSuggestions([]);
@@ -166,10 +169,20 @@ export default function SearchPage() {
         .then((results) => {
           if (controller.signal.aborted) return;
           setSuggestions(results);
-          setShowSuggestions(true);
+          setShowSuggestions(results.length > 0);
+          // A settled empty lookup must say so — silence below a typed
+          // query reads as "the page is broken" (same message /location shows).
+          if (!results.length) setLocationHint("Location nahi mili. Please try another area.");
         })
-        .catch(() => {
-          if (!controller.signal.aborted) setSuggestions([]);
+        .catch((cause) => {
+          if (controller.signal.aborted) return;
+          setSuggestions([]);
+          setShowSuggestions(false);
+          // System failures pass through verbatim; anything else gets the
+          // friendly no-match message — the same rule as /location.
+          setLocationHint(cause instanceof Error && cause.message.startsWith("Location search")
+            ? cause.message
+            : "Location nahi mili. Please try another area.");
         });
     }, 700);
     return () => {
