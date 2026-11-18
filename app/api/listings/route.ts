@@ -1,6 +1,10 @@
 import { NextResponse } from "next/server";
+import { isRecord } from "@/lib/api/booking-rules";
 import { parseListingDraft } from "@/lib/api/listing-input";
+import { resolveOwnerForOnBehalfListing } from "@/lib/api/on-behalf";
+import { isAdminUser } from "@/lib/auth/admin-access";
 import { listingMediaBucket } from "@/lib/listing-media";
+import { createAdminClient } from "@/lib/supabase/admin";
 import { createClient } from "@/lib/supabase/server";
 
 const PUBLIC_LISTING_COLUMNS = "id, title, description, property_type, area_value, area_unit, price_amount, price_model, min_booking_days, city, state, pincode, amenities, latitude, longitude, created_at, listing_photos(*)";
@@ -73,15 +77,6 @@ export async function POST(request: Request) {
     const { data: { user }, error: authError } = await supabase.auth.getUser();
     if (authError || !user) return NextResponse.json({ error: "Sign in before creating a listing." }, { status: 401 });
 
-    const { data: profile, error: profileError } = await supabase
-      .from("profiles")
-      .select("role")
-      .eq("id", user.id)
-      .maybeSingle();
-    if (profileError || profile?.role !== "owner") {
-      return NextResponse.json({ error: "Choose the Owner role before creating a listing." }, { status: 403 });
-    }
-
     let body: unknown;
     try {
       body = await request.json();
@@ -91,6 +86,45 @@ export async function POST(request: Request) {
 
     const parsed = parseListingDraft(body);
     if ("error" in parsed) return NextResponse.json({ error: parsed.error }, { status: 400 });
+
+    // Admin listing on behalf of an owner: the row belongs to the owner's
+    // account (resolved server-side from their email), which the admin's own
+    // session can neither insert through RLS nor claim an owner role for —
+    // so this path writes through the service client and skips the caller's
+    // own owner-role check.
+    const onBehalfOf = isRecord(body) && typeof body.onBehalfOf === "string" ? body.onBehalfOf.trim() : "";
+    if (onBehalfOf) {
+      if (!isAdminUser(user)) {
+        return NextResponse.json({ error: "Only SpaceYaar admins can list on behalf of an owner." }, { status: 403 });
+      }
+      const resolution = await resolveOwnerForOnBehalfListing(onBehalfOf);
+      if (!resolution.owner) return NextResponse.json({ error: resolution.error }, { status: resolution.status });
+
+      const service = createAdminClient();
+      let { data, error } = await service
+        .from("listings")
+        .insert({ ...parsed.data, owner_id: resolution.owner.id, status: "draft" })
+        .select("id, status")
+        .single();
+      if (error && isNewPricingColumnError(error)) {
+        ({ data, error } = await service
+          .from("listings")
+          .insert({ ...withoutNewPricingColumns(parsed.data), owner_id: resolution.owner.id, status: "draft" })
+          .select("id, status")
+          .single());
+      }
+      if (error) return NextResponse.json({ error: error.message }, { status: 400 });
+      return NextResponse.json({ listing: data }, { status: 201 });
+    }
+
+    const { data: profile, error: profileError } = await supabase
+      .from("profiles")
+      .select("role")
+      .eq("id", user.id)
+      .maybeSingle();
+    if (profileError || profile?.role !== "owner") {
+      return NextResponse.json({ error: "Choose the Owner role before creating a listing." }, { status: 403 });
+    }
 
     let { data, error } = await supabase
       .from("listings")

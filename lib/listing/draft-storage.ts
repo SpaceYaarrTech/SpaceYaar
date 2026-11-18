@@ -12,6 +12,8 @@
  * can be added later without touching the wizard.
  */
 
+import type { ListingOnBehalf } from "@/lib/listing/on-behalf";
+
 export const LISTING_DRAFT_KEY = "spaceyaar-listing-draft";
 export const LISTING_DRAFT_VERSION = 1;
 
@@ -68,6 +70,9 @@ export type ListingDraft = {
   showReview: boolean;
   editingFromReview: number | null;
   draftListingId: string | null;
+  // Admin on-behalf mode rides with the draft so a refresh mid-flow keeps it
+  // and finishing/leaving the flow drops it.
+  onBehalf?: ListingOnBehalf | null;
   values: ListingDraftValues;
 };
 

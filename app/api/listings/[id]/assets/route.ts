@@ -1,5 +1,7 @@
 import { NextResponse } from "next/server";
+import { isAdminUser } from "@/lib/auth/admin-access";
 import { createClient } from "@/lib/supabase/server";
+import { createAdminClient } from "@/lib/supabase/admin";
 
 type AssetPayload = {
   photos?: Array<{ storagePath?: unknown; label?: unknown; position?: unknown; mediaType?: unknown }>;
@@ -26,8 +28,27 @@ export async function POST(request: Request, context: { params: Promise<{ id: st
       return NextResponse.json({ error: "One or more document records are invalid." }, { status: 400 });
     }
 
+    // Photo/document rows are RLS-tied to the listing owner. When an admin
+    // attaches files to an on-behalf listing (owned by someone else), the
+    // session write would be filtered out — fall back to the service client
+    // once the path checks above have already proven where the files live.
+    let writeClient = supabase;
+    if (isAdminUser(user)) {
+      try {
+        const admin = createAdminClient();
+        const { data: listing } = await admin
+          .from("listings")
+          .select("owner_id")
+          .eq("id", listingId)
+          .maybeSingle();
+        if (listing && listing.owner_id !== user.id) writeClient = admin;
+      } catch (cause) {
+        console.error("Could not open service client for on-behalf assets:", cause);
+      }
+    }
+
     if (photos.length) {
-      let { error } = await supabase.from("listing_photos").upsert(
+      let { error } = await writeClient.from("listing_photos").upsert(
         photos.map((photo) => ({
           listing_id: listingId,
           storage_path: photo.storagePath as string,
@@ -39,7 +60,7 @@ export async function POST(request: Request, context: { params: Promise<{ id: st
       );
       if (error && error.message.includes("media_type")) {
         // media_type migration not applied yet: store rows without it.
-        const fallback = await supabase.from("listing_photos").upsert(
+        const fallback = await writeClient.from("listing_photos").upsert(
           photos.map((photo) => ({
             listing_id: listingId,
             storage_path: photo.storagePath as string,
@@ -54,7 +75,7 @@ export async function POST(request: Request, context: { params: Promise<{ id: st
     }
 
     if (documents.length) {
-      const { error } = await supabase.from("listing_documents").upsert(
+      const { error } = await writeClient.from("listing_documents").upsert(
         documents.map((document) => ({
           listing_id: listingId,
           storage_path: document.storagePath as string,

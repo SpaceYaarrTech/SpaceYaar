@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { isAdminUser } from "@/lib/auth/admin-access";
 import { createClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 
@@ -15,13 +16,27 @@ export async function POST(_request: Request, context: { params: Promise<{ id: s
     const { data: { user }, error: authError } = await supabase.auth.getUser();
     if (authError || !user) return NextResponse.json({ error: "Sign in to submit this listing." }, { status: 401 });
 
-    const { data: editableListing, error: listingError } = await supabase
-      .from("listings")
-      .select("id")
-      .eq("id", id)
-      .eq("owner_id", user.id)
-      .in("status", ["draft", "rejected"])
-      .maybeSingle();
+    const admin = createAdminClient();
+    const actingAsAdmin = isAdminUser(user);
+
+    // Owners submit their own drafts (RLS enforces the same scope). An admin
+    // may also submit an on-behalf listing — one they created for a different
+    // owner — which publishes straight away instead of entering review.
+    const lookup = actingAsAdmin
+      ? admin
+          .from("listings")
+          .select("id, owner_id, title")
+          .eq("id", id)
+          .in("status", ["draft", "rejected"])
+          .maybeSingle()
+      : supabase
+          .from("listings")
+          .select("id, owner_id, title")
+          .eq("id", id)
+          .eq("owner_id", user.id)
+          .in("status", ["draft", "rejected"])
+          .maybeSingle();
+    const { data: editableListing, error: listingError } = await lookup;
     if (listingError) {
       return NextResponse.json({ error: errorMessage(listingError, "Could not verify this listing.") }, { status: 400 });
     }
@@ -31,7 +46,6 @@ export async function POST(_request: Request, context: { params: Promise<{ id: s
       }, { status: 409 });
     }
 
-    const admin = createAdminClient();
     let { data: photos, error: photoError } = await admin
       .from("listing_photos")
       .select("id, media_type")
@@ -67,6 +81,47 @@ export async function POST(_request: Request, context: { params: Promise<{ id: s
 
     if (!aadhaarCount) {
       return NextResponse.json({ error: "Upload your Aadhaar card before submitting." }, { status: 400 });
+    }
+
+    // On-behalf listing: the admin IS the review step, so their submission
+    // publishes the listing right away instead of parking it in the queue.
+    // The owner gets the same "listing is live" notice the review queue sends
+    // on approval.
+    if (actingAsAdmin && editableListing.owner_id !== user.id) {
+      const { data, error } = await admin
+        .from("listings")
+        .update({
+          status: "published",
+          updated_at: new Date().toISOString(),
+          rejection_reason: null,
+          reviewed_at: null,
+        })
+        .eq("id", id)
+        .in("status", ["draft", "rejected"])
+        .select("id, status")
+        .maybeSingle();
+      if (error) {
+        return NextResponse.json({ error: errorMessage(error, "Could not publish this listing. Please refresh and try again.") }, { status: 400 });
+      }
+      if (!data) {
+        return NextResponse.json({
+          error: "This listing was not found or is no longer an editable draft. Refresh your listings and try again.",
+        }, { status: 409 });
+      }
+
+      const { error: notifyError } = await admin.from("notifications").insert({
+        user_id: editableListing.owner_id,
+        kind: "listing_approved",
+        title: "Your listing is now live",
+        body: `“${editableListing.title}” is live and visible to renters in search.`,
+        link: `/listings/${id}`,
+        listing_id: id,
+      });
+      if (notifyError) {
+        console.error("Could not create listing published notification:", notifyError.message);
+      }
+
+      return NextResponse.json({ listing: data });
     }
 
     const { data, error } = await supabase

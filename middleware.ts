@@ -9,6 +9,14 @@ export async function middleware(request: NextRequest) {
   const previewAuthBypass = process.env.NODE_ENV === "development" && process.env.NEXT_PUBLIC_AUTH_BYPASS === "true";
   if (isOwnerRoute && previewAuthBypass) return NextResponse.next({ request });
 
+  // Development only: /admin pages decide access themselves (the layout sends
+  // signed-out visitors to /login and shows non-admins a refusal, and every
+  // admin API route still calls requireAdmin server-side), which keeps the
+  // portal exercisable in local dev without a live Supabase session. Every
+  // deployed build runs with NODE_ENV=production, so production keeps the
+  // session redirect below.
+  if (process.env.NODE_ENV === "development" && isAdminRoute) return NextResponse.next({ request });
+
   const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
   const key = process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY;
   if (!url || !key) {

@@ -27,6 +27,7 @@ import {
   type DraftMediaPhoto,
   type ListingDraft,
 } from "@/lib/listing/draft-storage";
+import { clearOnBehalfHandoff, readOnBehalfHandoff, type ListingOnBehalf } from "@/lib/listing/on-behalf";
 import {
   firstError,
   validateStep1,
@@ -215,6 +216,7 @@ export function OwnerHome() {
   const [photoFiles, setPhotoFiles] = useState<Record<string, { name: string; previewUrl: string; file: File; isVideo: boolean; isCompressing?: boolean }>>({});
   const [documentFiles, setDocumentFiles] = useState<Record<string, { name: string; file: File }>>({});
   const [draftListingId, setDraftListingId] = useState<string | null>(null);
+  const [onBehalf, setOnBehalf] = useState<ListingOnBehalf | null>(null);
   const [isSubmittingListing, setIsSubmittingListing] = useState(false);
   const [submissionError, setSubmissionError] = useState("");
   const [loginGate, setLoginGate] = useState(false);
@@ -313,6 +315,19 @@ export function OwnerHome() {
       setDraftListingId(draft.draftListingId ?? null);
       setDraftNotice("Picked up where you left off.");
     }
+
+    // Admin on-behalf context: a fresh handoff from /admin/listing is the
+    // newest explicit intent and wins over a previously persisted mode;
+    // otherwise resume whatever mode the draft carries. The handoff is
+    // one-shot — the draft becomes its durable home.
+    const handoff = readOnBehalfHandoff();
+    if (handoff) {
+      clearOnBehalfHandoff();
+      setOnBehalf(handoff);
+    } else if (draft && typeof draft.onBehalf?.email === "string" && draft.onBehalf.email.trim()) {
+      setOnBehalf(draft.onBehalf);
+    }
+
     hydratedRef.current = true;
 
     // Files ride in IndexedDB next to the JSON draft (File isn't serializable
@@ -465,6 +480,7 @@ export function OwnerHome() {
     showReview: review,
     editingFromReview,
     draftListingId,
+    onBehalf,
     values: {
       selectedSpaceType,
       selectedFloor,
@@ -768,6 +784,39 @@ export function OwnerHome() {
     track("listing_kyc_uploaded", { document: label });
   };
 
+  // An admin uploading for an owner fails storage RLS (the folder is tied to
+  // the owner, not the uploader), so those files swap their direct upload for
+  // a server-signed URL — the bytes still go browser → storage directly.
+  const uploadListingFile = async (
+    client: ReturnType<typeof createClient>,
+    listingId: string,
+    bucket: string,
+    storagePath: string,
+    file: File,
+    viaSignedUrl: boolean,
+  ): Promise<{ message: string } | null> => {
+    if (!viaSignedUrl) {
+      const { error } = await client.storage.from(bucket).upload(storagePath, file, {
+        contentType: file.type,
+        upsert: false,
+      });
+      return error;
+    }
+    const response = await fetch(`/api/listings/${listingId}/sign-upload`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ bucket, path: storagePath }),
+    });
+    const result = await response.json() as { path?: string; token?: string; error?: string };
+    if (!response.ok || !result.path || !result.token) {
+      return { message: result.error || "Could not sign this upload. Try again." };
+    }
+    const { error } = await client.storage.from(bucket).uploadToSignedUrl(result.path, result.token, file, {
+      contentType: file.type,
+    });
+    return error;
+  };
+
   const handleSubmitListing = async () => {
     if (isSubmittingListing) return;
     setSubmissionError("");
@@ -885,6 +934,7 @@ export function OwnerHome() {
             accessInstructions,
             latitude: selectedLocation.latitude,
             longitude: selectedLocation.longitude,
+            ...(onBehalf ? { onBehalfOf: onBehalf.email } : {}),
           }),
         });
         const result = await response.json() as { listing?: { id?: string }; error?: string };
@@ -898,10 +948,7 @@ export function OwnerHome() {
       for (const [index, [label, photo]] of photos.entries()) {
         const storagePath = `${user.id}/${listingId}/${crypto.randomUUID()}-${safeFileName(photo.name)}`;
         const bucket = photo.isVideo ? "listing-videos" : "listing-photos";
-        const { error } = await supabase.storage.from(bucket).upload(storagePath, photo.file, {
-          contentType: photo.file.type,
-          upsert: false,
-        });
+        const error = await uploadListingFile(supabase, listingId, bucket, storagePath, photo.file, Boolean(onBehalf));
         if (error) throw new Error(error.message);
         photoMetadata.push({ storagePath, label, position: index, mediaType: photo.isVideo ? "video" : "image" });
       }
@@ -909,10 +956,7 @@ export function OwnerHome() {
       const documentMetadata = [];
       for (const [documentType, document] of documents) {
         const storagePath = `${user.id}/${listingId}/${crypto.randomUUID()}-${safeFileName(document.name)}`;
-        const { error } = await supabase.storage.from("kyc-documents").upload(storagePath, document.file, {
-          contentType: document.file.type,
-          upsert: false,
-        });
+        const error = await uploadListingFile(supabase, listingId, "kyc-documents", storagePath, document.file, Boolean(onBehalf));
         if (error) throw new Error(error.message);
         documentMetadata.push({ storagePath, documentType });
       }
@@ -933,8 +977,15 @@ export function OwnerHome() {
       clearListingDraft();
       void clearDraftMedia();
       setDraftListingId(null);
+      setOnBehalf(null);
       track("listing_submit_success");
-      router.replace(`/owner/submitted/${encodeURIComponent(submitResult.listing.id)}`);
+      // On-behalf publishes immediately — skip the verification screen and
+      // land on the admin confirmation that links to the live listing.
+      router.replace(
+        onBehalf
+          ? `/admin/listing/published/${encodeURIComponent(submitResult.listing.id)}`
+          : `/owner/submitted/${encodeURIComponent(submitResult.listing.id)}`,
+      );
     } catch (error) {
       setSubmissionError(error instanceof Error ? error.message : "Could not submit this listing.");
       track("listing_submit_failed");
@@ -976,6 +1027,16 @@ export function OwnerHome() {
     track("listing_step_saved", { step });
   };
 
+  // Leave on-behalf mode without discarding the half-filled draft — the
+  // content stays as the admin's own draft, only the ownership context goes.
+  const exitOnBehalfMode = () => {
+    // snapshotDraft closes over the still-current state, so write the cleared
+    // mode explicitly before navigating away.
+    saveListingDraft({ ...snapshotDraft(currentStep, showReview), onBehalf: null });
+    setOnBehalf(null);
+    router.replace("/admin");
+  };
+
   const handleBack = () => {
     // Best-effort save so backing out of the wizard never loses progress.
     saveListingDraft(snapshotDraft(currentStep, showReview));
@@ -989,7 +1050,9 @@ export function OwnerHome() {
     if (editingFromReview === currentStep) setEditingFromReview(null);
 
     if (currentStep === 1) {
-      router.push("/role-selection");
+      // An admin listing for an owner backs out to the owner-email step, not
+      // the renter/owner role picker.
+      router.push(onBehalf ? "/admin/listing" : "/role-selection");
       return;
     }
 
@@ -1732,8 +1795,11 @@ export function OwnerHome() {
       </button>
 
       {submissionError && <p className="auth-error" role="alert">{submissionError}</p>}
+      {onBehalf && <p className="owner-behalf-hint">Publishes immediately — this listing skips the review queue.</p>}
       <button type="button" className="owner-submit-button" onClick={handleSubmitListing} disabled={isSubmittingListing}>
-        {isSubmittingListing ? "Submitting..." : "Submit your Listing"}
+        {isSubmittingListing
+          ? onBehalf ? "Publishing..." : "Submitting..."
+          : onBehalf ? "Publish the Listing" : "Submit your Listing"}
       </button>
     </div>
   );
@@ -1759,6 +1825,18 @@ export function OwnerHome() {
       }}
     >
       <div className="owner-shell">
+        {onBehalf && (
+          <div className="owner-behalf-banner" role="status">
+            <span className="owner-behalf-copy">
+              Listing on behalf of <strong>{onBehalf.displayName || onBehalf.email}</strong>
+              <span className="owner-behalf-email">{onBehalf.email}</span>
+            </span>
+            <button type="button" className="owner-behalf-exit" onClick={exitOnBehalfMode}>
+              Exit
+            </button>
+          </div>
+        )}
+
         {!showReview && (
           <>
             <div className="owner-header">

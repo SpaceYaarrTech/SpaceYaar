@@ -188,6 +188,7 @@ export function ListingReviewQueue() {
           <h1>Listing review</h1>
         </div>
         <div className="admin-review-header-actions">
+          <Link href="/admin/listing">List for an owner</Link>
           <button type="button" className="admin-review-refresh" onClick={() => void loadListings().catch(() => undefined)} disabled={loading}>
             Refresh
           </button>
