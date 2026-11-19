@@ -4,6 +4,7 @@ import Image from "next/image";
 import { useRouter } from "next/navigation";
 import { useEffect, useMemo, useRef, useState } from "react";
 import {
+  Images,
   MapPin,
   Search,
   ShieldCheck,
@@ -13,6 +14,7 @@ import {
 } from "lucide-react";
 import { LISTINGS, type Listing } from "@/data/listings";
 import { LoginGateModal } from "@/components/auth/LoginGateModal";
+import { ListingPhotoGallery, type GalleryPhoto } from "@/components/renter/ListingPhotoGallery";
 import { RenterBottomNavigation } from "@/components/renter/RenterBottomNavigation";
 import { isGuestLoginRequired } from "@/lib/auth/guest-session";
 import { getSelectedRole, setSelectedRole } from "@/lib/roles/role-storage";
@@ -72,7 +74,7 @@ type PublicListing = {
   listing_photos: Array<{ image_url: string; label: string; position: number; media_type?: string }>;
 };
 
-type RenterListing = Listing & { minimumBookingDays: number };
+type RenterListing = Listing & { minimumBookingDays: number; photos: GalleryPhoto[] };
 
 const FALLBACK_LISTING_IMAGE = "https://images.unsplash.com/photo-1586528116311-ad8dd3c8310d?auto=format&fit=crop&w=1200&q=80";
 
@@ -103,11 +105,20 @@ function mapPublicListing(listing: PublicListing, origin: [number, number] | nul
     ? distanceInKm(origin, [listing.latitude, listing.longitude])
     : Number.POSITIVE_INFINITY;
 
+  // Every uploaded photo, in the owner's order — this is what the full-screen
+  // gallery swipes through. Videos keep their own slide type.
+  const sortedPhotos = [...listing.listing_photos].sort((a, b) => a.position - b.position);
+  const photos: GalleryPhoto[] = sortedPhotos.map((photo) => ({
+    url: photo.image_url,
+    label: photo.label,
+    isVideo: photo.media_type === "video",
+  }));
+
   return {
     id: listing.id,
     title: listing.title,
     description: listing.description,
-    image: (listing.listing_photos.find((photo) => photo.media_type !== "video") ?? listing.listing_photos[0])?.image_url || FALLBACK_LISTING_IMAGE,
+    image: (sortedPhotos.find((photo) => photo.media_type !== "video") ?? sortedPhotos[0])?.image_url || FALLBACK_LISTING_IMAGE,
     distance: Number.isFinite(distanceValue) ? `${distanceValue.toFixed(1)} km away` : listing.city,
     distanceValue,
     feature: listing.amenities[0] || listing.property_type,
@@ -116,6 +127,7 @@ function mapPublicListing(listing: PublicListing, origin: [number, number] | nul
     priceValue: perDayAmount,
     badge: { label: "Reviewed", type: "verified" },
     minimumBookingDays: listing.min_booking_days,
+    photos,
   };
 }
 
@@ -144,15 +156,22 @@ function getBadgeIcon(type: Listing["badge"]["type"]) {
 function ListingCard({
   listing,
   onBook,
+  onOpenGallery,
   isDemo,
 }: {
   listing: RenterListing;
   onBook: (listing: RenterListing) => void;
+  onOpenGallery: (listing: RenterListing) => void;
   isDemo: boolean;
 }) {
   return (
     <article className="listing-card" aria-label={listing.title}>
-      <div className="listing-image-wrap">
+      <button
+        type="button"
+        className="listing-image-wrap listing-image-tap"
+        aria-label={`View ${listing.photos.length} photo${listing.photos.length === 1 ? "" : "s"} of ${listing.title}`}
+        onClick={() => onOpenGallery(listing)}
+      >
         <Image
           src={listing.image}
           alt={listing.title}
@@ -160,11 +179,17 @@ function ListingCard({
           sizes="(max-width: 390px) 100vw, 390px"
           className="listing-image"
         />
-        <div className={getBadgeClasses(listing.badge.type)}>
+        <span className={getBadgeClasses(listing.badge.type)}>
           {getBadgeIcon(listing.badge.type)}
           <span>{listing.badge.label}</span>
-        </div>
-      </div>
+        </span>
+        {listing.photos.length > 1 && (
+          <span className="listing-photo-count" aria-hidden="true">
+            <Images size={9} strokeWidth={2.4} />
+            {listing.photos.length}
+          </span>
+        )}
+      </button>
 
       <div className="listing-body">
         <h3>{listing.title}</h3>
@@ -206,6 +231,7 @@ export function RenterHome({ onRoleChange }: RenterHomeProps = {}) {
   const [listingsError, setListingsError] = useState("");
   const [isDemoListings, setIsDemoListings] = useState(false);
   const [bookingListing, setBookingListing] = useState<RenterListing | null>(null);
+  const [galleryListing, setGalleryListing] = useState<RenterListing | null>(null);
   const [bookingStartDate, setBookingStartDate] = useState("");
   const [bookingEndDate, setBookingEndDate] = useState("");
   const [bookingNote, setBookingNote] = useState("");
@@ -302,7 +328,11 @@ export function RenterHome({ onRoleChange }: RenterHomeProps = {}) {
         const result = await response.json() as { listings?: PublicListing[]; error?: string };
         if (result.error === "Backend is not configured yet.") {
           if (isCurrent) {
-            setListings(LISTINGS.map((listing) => ({ ...listing, minimumBookingDays: 1 })));
+            setListings(LISTINGS.map((listing) => ({
+              ...listing,
+              minimumBookingDays: 1,
+              photos: [{ url: listing.image }],
+            })));
             setIsDemoListings(true);
           }
           return;
@@ -545,7 +575,13 @@ export function RenterHome({ onRoleChange }: RenterHomeProps = {}) {
             )}
             {filteredListings.length ? (
               filteredListings.map((listing) => (
-                <ListingCard key={listing.id} listing={listing} onBook={openBookingRequest} isDemo={isDemoListings} />
+                <ListingCard
+                  key={listing.id}
+                  listing={listing}
+                  onBook={openBookingRequest}
+                  onOpenGallery={setGalleryListing}
+                  isDemo={isDemoListings}
+                />
               ))
             ) : (
               <div className="empty-state">No spaces match this filter yet.</div>
@@ -598,6 +634,14 @@ export function RenterHome({ onRoleChange }: RenterHomeProps = {}) {
             </div>
           </form>
         </div>
+      )}
+
+      {galleryListing && (
+        <ListingPhotoGallery
+          photos={galleryListing.photos}
+          title={galleryListing.title}
+          onClose={() => setGalleryListing(null)}
+        />
       )}
 
       {loginGate && (

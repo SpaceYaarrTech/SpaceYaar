@@ -5405,6 +5405,310 @@ a { color: inherit; text-decoration: none; }
   color: #fff;
 }
 
+/* Tappable card image: the whole photo opens the full-screen gallery. */
+.listing-image-tap {
+  display: block;
+  padding: 0;
+  border: 0;
+  font: inherit;
+  color: inherit;
+  cursor: pointer;
+  -webkit-appearance: none;
+  appearance: none;
+}
+
+.listing-image-tap:focus-visible {
+  outline: 2px solid #fc1d0e;
+  outline-offset: -2px;
+}
+
+.listing-photo-count {
+  position: absolute;
+  right: 8px;
+  bottom: 8px;
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  height: 20px;
+  padding: 0 8px;
+  border-radius: 999px;
+  background: rgba(17, 15, 14, 0.72);
+  color: #fff;
+  font-size: 9px;
+  font-weight: 700;
+  letter-spacing: -0.01em;
+  backdrop-filter: blur(4px);
+}
+
+/* ---- Full-screen listing photo gallery ---- */
+
+.photo-gallery-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 1100;
+  display: flex;
+  flex-direction: column;
+  background: #0c0a09;
+  animation: photo-gallery-in 0.22s ease-out;
+}
+
+@keyframes photo-gallery-in {
+  from {
+    opacity: 0;
+    transform: scale(0.985);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+
+.photo-gallery-header {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: max(14px, env(safe-area-inset-top)) 14px 10px;
+  color: #fff;
+}
+
+.photo-gallery-close {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 36px;
+  height: 36px;
+  flex: 0 0 36px;
+  border: 0;
+  border-radius: 50%;
+  background: rgba(255, 255, 255, 0.14);
+  color: #fff;
+  cursor: pointer;
+}
+
+.photo-gallery-close:hover {
+  background: rgba(255, 255, 255, 0.24);
+}
+
+.photo-gallery-title {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  color: rgba(255, 255, 255, 0.92);
+  font-size: 13px;
+  font-weight: 600;
+  line-height: 1.3;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.photo-gallery-counter {
+  flex: 0 0 auto;
+  padding: 5px 11px;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.14);
+  color: rgba(255, 255, 255, 0.75);
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+}
+
+.photo-gallery-counter b {
+  color: #fff;
+  font-weight: 800;
+}
+
+/* Segmented progress rail — one tick per photo, current one in brand red. */
+.photo-gallery-rail {
+  display: flex;
+  gap: 3px;
+  padding: 0 14px;
+}
+
+.photo-gallery-rail-seg {
+  flex: 1;
+  height: 3px;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.18);
+  transition: background 0.18s ease;
+}
+
+.photo-gallery-rail-seg.is-done {
+  background: rgba(255, 255, 255, 0.55);
+}
+
+.photo-gallery-rail-seg.is-active {
+  background: #fc1d0e;
+}
+
+.photo-gallery-stage {
+  position: relative;
+  flex: 1;
+  min-height: 0;
+}
+
+.photo-gallery-viewport {
+  display: flex;
+  height: 100%;
+  overflow-x: auto;
+  overflow-y: hidden;
+  scroll-behavior: smooth;
+  scroll-snap-type: x mandatory;
+  scrollbar-width: none;
+  -webkit-overflow-scrolling: touch;
+}
+
+.photo-gallery-viewport::-webkit-scrollbar {
+  display: none;
+}
+
+.photo-gallery-slide {
+  position: relative;
+  flex: 0 0 100%;
+  width: 100%;
+  height: 100%;
+  margin: 0;
+  scroll-snap-align: center;
+  scroll-snap-stop: always;
+}
+
+.photo-gallery-slide img {
+  object-fit: contain;
+}
+
+.photo-gallery-slide video {
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+  background: #000;
+}
+
+/* Subtle settle-in for the photo the user actually landed on. */
+.photo-gallery-slide.is-active img,
+.photo-gallery-slide.is-active video {
+  animation: photo-slide-in 0.26s ease-out;
+}
+
+@keyframes photo-slide-in {
+  from {
+    opacity: 0.4;
+    transform: scale(1.015);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+
+.photo-gallery-nav {
+  position: absolute;
+  top: 50%;
+  transform: translateY(-50%);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 40px;
+  height: 40px;
+  border: 0;
+  border-radius: 50%;
+  background: rgba(255, 255, 255, 0.14);
+  color: #fff;
+  cursor: pointer;
+  transition: background 0.15s ease, opacity 0.15s ease;
+}
+
+.photo-gallery-nav:hover:not(:disabled) {
+  background: rgba(255, 255, 255, 0.28);
+}
+
+.photo-gallery-nav:disabled {
+  opacity: 0;
+  pointer-events: none;
+}
+
+.photo-gallery-nav--prev {
+  left: 12px;
+}
+
+.photo-gallery-nav--next {
+  right: 12px;
+}
+
+@media (hover: none) {
+  .photo-gallery-nav {
+    display: none;
+  }
+}
+
+.photo-gallery-caption {
+  position: absolute;
+  left: 50%;
+  bottom: 14px;
+  transform: translateX(-50%);
+  max-width: calc(100% - 120px);
+  overflow: hidden;
+  padding: 5px 12px;
+  border-radius: 999px;
+  background: rgba(12, 10, 9, 0.66);
+  color: rgba(255, 255, 255, 0.92);
+  font-size: 11px;
+  font-weight: 600;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  backdrop-filter: blur(6px);
+}
+
+.photo-gallery-filmstrip {
+  display: flex;
+  gap: 8px;
+  overflow-x: auto;
+  padding: 12px 14px max(14px, env(safe-area-inset-bottom));
+  scrollbar-width: none;
+  -webkit-overflow-scrolling: touch;
+}
+
+.photo-gallery-filmstrip::-webkit-scrollbar {
+  display: none;
+}
+
+.photo-gallery-thumb {
+  position: relative;
+  flex: 0 0 auto;
+  width: 56px;
+  height: 42px;
+  padding: 0;
+  border: 2px solid transparent;
+  border-radius: 8px;
+  overflow: hidden;
+  background: #211d1c;
+  cursor: pointer;
+  opacity: 0.55;
+  transition: opacity 0.15s ease, border-color 0.15s ease, transform 0.15s ease;
+}
+
+.photo-gallery-thumb:hover {
+  opacity: 0.85;
+}
+
+.photo-gallery-thumb.is-active {
+  border-color: #fc1d0e;
+  opacity: 1;
+  transform: translateY(-2px);
+}
+
+.photo-gallery-thumb img,
+.photo-gallery-thumb video {
+  object-fit: cover;
+  pointer-events: none;
+}
+
+.photo-gallery-thumb:focus-visible,
+.photo-gallery-close:focus-visible,
+.photo-gallery-nav:focus-visible {
+  outline: 2px solid #fc1d0e;
+  outline-offset: 2px;
+}
+
 .listing-body {
   display: flex;
   flex-direction: column;
